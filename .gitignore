@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+InterviewCopilot.app/
+dist/
+.claude/
+.DS_Store
