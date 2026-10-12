@@ -1,7 +1,7 @@
 # Interview Copilot for macOS
 
-[![Download](https://img.shields.io/github/downloads/wenayy/Interview_Copilot/total?label=downloads&color=2ea44f)](../../releases/latest)
-[![Stars](https://img.shields.io/github/stars/wenayy/Interview_Copilot?style=social)](../../stargazers)
+[![Download](https://img.shields.io/github/downloads/wenayy/interview-copilot-v2/total?label=downloads&color=2ea44f)](../../releases/latest)
+[![Stars](https://img.shields.io/github/stars/wenayy/interview-copilot-v2?style=social)](../../stargazers)
 
 A native macOS interview assistant that helps you during live interviews by
 listening to the conversation, detecting questions, and giving you fast
@@ -78,7 +78,9 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
 
 - A **Mac** running **macOS 14 (Sonoma) or newer**.
 - **API keys** (bring your own — the app has no backend/billing):
-  - One LLM key: **OpenAI**, **Anthropic**, or **Google Gemini** (Gemini has a free tier).
+  - One LLM key: **OpenAI**, **Anthropic**, **DeepSeek**, or **Google Gemini** (Gemini has a free tier).
+    DeepSeek can't read images, so Screen/Scroll captures need an OpenAI,
+    Anthropic, or Gemini key too.
   - *Optional but recommended:* a **Deepgram** key for accurate transcription
     (Apple's built-in engine works without it).
 
@@ -108,8 +110,8 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
 Requires **Xcode Command Line Tools** (`xcode-select --install`).
 
 ```bash
-git clone <this-repo-url>
-cd interview-copilot
+git clone https://github.com/wenayy/interview-copilot-v2.git
+cd interview-copilot-v2
 ./build_app.sh          # builds + installs to /Applications
 open /Applications/InterviewCopilot.app
 ```
@@ -295,7 +297,7 @@ Sources/InterviewCopilot/
   SessionStore.swift    saves the current session's memory to disk
   HotKeys.swift         global hotkeys (Carbon RegisterEventHotKey)
 build_app.sh            build + sign + install to /Applications
-package.sh              build + zip for a GitHub Release
+package.sh              universal build + zip for a GitHub Release
 ```
 
 ---

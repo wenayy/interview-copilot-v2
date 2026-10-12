@@ -7,10 +7,21 @@ set -euo pipefail
 CONFIG="${1:-release}"
 APP="InterviewCopilot.app"
 
-echo "▶ Building ($CONFIG)…"
-swift build -c "$CONFIG"
-
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/InterviewCopilot"
+if [ "${UNIVERSAL:-0}" = "1" ]; then
+    # Apple Silicon + Intel in one binary (for release downloads). Each arch is
+    # built separately and merged with lipo, which works without full Xcode.
+    echo "▶ Building universal ($CONFIG: arm64 + x86_64)…"
+    swift build -c "$CONFIG" --arch arm64
+    swift build -c "$CONFIG" --arch x86_64
+    BIN="$(mktemp -d)/InterviewCopilot"
+    lipo -create -output "$BIN" \
+        "$(swift build -c "$CONFIG" --arch arm64 --show-bin-path)/InterviewCopilot" \
+        "$(swift build -c "$CONFIG" --arch x86_64 --show-bin-path)/InterviewCopilot"
+else
+    echo "▶ Building ($CONFIG)…"
+    swift build -c "$CONFIG"
+    BIN="$(swift build -c "$CONFIG" --show-bin-path)/InterviewCopilot"
+fi
 
 echo "▶ Assembling ${APP} …"
 rm -rf "$APP"
