@@ -53,9 +53,20 @@ final class CopilotViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(useResume, forKey: "useResume") }
     }
 
+    /// This session's exchanges (answers + captured screen text), sent with
+    /// every request so follow-ups have context. Persisted so a relaunch
+    /// mid-meeting keeps it; cleared by New session.
+    @Published private(set) var memory = SessionStore.load() {
+        didSet { SessionStore.save(memory) }
+    }
+
     /// Scrolling screenshot in progress (overlay shows Done / Cancel).
     @Published var scrollCapturing = false
     @Published var scrollFrames = 0
+
+    /// Caps on what one exchange stores (the prompt applies its own budget).
+    private let memoryScreenChars = 12_000
+    private let memoryMaxExchanges = 300
 
     /// Only the last N transcript lines are sent to the model, to keep per-call
     /// token cost flat over a long interview.
@@ -352,7 +363,22 @@ final class CopilotViewModel: ObservableObject {
         let ctx = combinedContext()
         let style = answerStyle
         let think = deepThink
+        let mem = memory
+        let question: String
+        switch screenshots.count {
+        case 0: question = snapshot.last(where: { $0.speaker == .interviewer })?.text
+                    ?? "(spoken question)"
+        case 1: question = "[Screenshot of my screen — answer what it shows]"
+        default: question = "[Scrolling screenshot of my screen, " +
+                    "\(screenshots.count) frames — answer what it shows]"
+        }
         apiCalls += 1
+
+        // Read the capture's text on-device while the model answers; it's kept
+        // with this exchange so later follow-ups (even text-only ones to
+        // DeepSeek) know what the problem was.
+        let ocr: Task<String, Never>? = screenshots.isEmpty ? nil
+            : Task.detached(priority: .utility) { ScreenOCR.text(from: screenshots) }
 
         // DeepSeek doesn't support vision — fall back to OpenAI for screenshots.
         var activeProvider = provider
@@ -373,12 +399,19 @@ final class CopilotViewModel: ObservableObject {
         do {
             for try await delta in activeProvider.streamSuggestion(
                 transcript: snapshot, jobContext: ctx,
-                screenshots: screenshots, style: style, thinking: think) {
+                screenshots: screenshots, memory: mem, style: style, thinking: think) {
                 if Task.isCancelled { return }
                 suggestion += delta
             }
+            remember(question: question, answer: suggestion,
+                     screenText: await ocr?.value)
         } catch {
             suggestion = "⚠️ \(error.localizedDescription)"
+            // Keep a failed capture's text anyway, so a follow-up can still
+            // refer to that problem.
+            if let text = await ocr?.value, !text.isEmpty, !Task.isCancelled {
+                remember(question: question, answer: "", screenText: text)
+            }
         }
     }
 
@@ -464,16 +497,50 @@ final class CopilotViewModel: ObservableObject {
             let ctx = self.combinedContext()
             let style = self.answerStyle
             let think = self.deepThink
+            let mem = self.memory
             do {
                 for try await delta in self.provider.streamSuggestion(
                     transcript: snapshot + [.init(speaker: .interviewer, text: question)],
-                    jobContext: ctx, screenshots: [], style: style, thinking: think) {
+                    jobContext: ctx, screenshots: [], memory: mem,
+                    style: style, thinking: think) {
                     if Task.isCancelled { return }
                     self.suggestion += delta
                 }
+                self.remember(question: question, answer: self.suggestion,
+                              screenText: nil)
             } catch {
                 self.suggestion = "⚠️ \(error.localizedDescription)"
             }
+        }
+    }
+
+    // MARK: - Session memory
+
+    /// Start fresh for a new meeting: clears remembered answers, captured
+    /// screen text, the transcript, and the API counter. Your résumé and job
+    /// notes are kept (edit them under Context for each meeting).
+    func newSession() {
+        suggestionTask?.cancel()          // an in-flight answer won't be saved
+        if scrollCapturing { cancelScrollCapture() }
+        memory = SessionMemory()
+        transcript = []
+        liveInterviewer = ""
+        liveMe = ""
+        suggestion = ""
+        apiCalls = 0
+        status = "New session — memory and transcript cleared"
+    }
+
+    private func remember(question: String, answer: String, screenText: String?) {
+        if Task.isCancelled { return }    // replaced by a newer request / New session
+        let a = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let screen = screenText?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(memoryScreenChars)
+        guard !a.isEmpty || !(screen ?? "").isEmpty else { return }
+        memory.exchanges.append(.init(question: question, answer: a,
+                                      screenText: screen.map(String.init)))
+        if memory.exchanges.count > memoryMaxExchanges {
+            memory.exchanges.removeFirst(memory.exchanges.count - memoryMaxExchanges)
         }
     }
 

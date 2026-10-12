@@ -5,6 +5,7 @@ struct ContentView: View {
     @ObservedObject var vm: CopilotViewModel
     @State private var showContext = false
     @State private var showKeys = false
+    @State private var confirmNewSession = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -134,8 +135,16 @@ struct ContentView: View {
         }
     }
 
-    // Answer-style picker + auto toggle + Screen / Answer actions.
+    // Answer-style picker + toggles on one row, Screen / Scroll / Answer
+    // actions on their own row so nothing gets clipped at overlay width.
     private var controls: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            optionsRow
+            actionsRow
+        }
+    }
+
+    private var optionsRow: some View {
         HStack(spacing: 10) {
             Picker("", selection: $vm.answerStyle) {
                 ForEach(AnswerStyle.allCases) { s in Text(s.label).tag(s) }
@@ -169,22 +178,72 @@ struct ContentView: View {
                 .help("DeepSeek thinking mode — deeper reasoning before " +
                       "answering (~3-5s). Off = fast instant answers.")
 
-            Spacer()
-            Button("Screen") { vm.answerFromScreen() }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.orange)
-            Button("Scroll") { vm.toggleScrollCapture() }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.pink)
-                .help("Scrolling screenshot: select a region, scroll it, " +
-                      "then Done (⌃⌥L)")
-            Button("Answer") { vm.requestSuggestion() }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.cyan)
+            Spacer(minLength: 0)
         }
+    }
+
+    private var actionsRow: some View {
+        HStack(spacing: 6) {
+            actionButton("Screen", systemImage: "camera.viewfinder", .orange,
+                         help: "Answer what's on screen (⌃⌥S)") {
+                vm.answerFromScreen()
+            }
+            actionButton(vm.scrollCapturing ? "Done" : "Scroll",
+                         systemImage: "scroll", .pink,
+                         help: "Scrolling screenshot: select a region, scroll " +
+                               "it, then Done (⌃⌥L)") {
+                vm.toggleScrollCapture()
+            }
+            actionButton("Answer", systemImage: "sparkles", .cyan,
+                         help: "Answer the interviewer's latest question (⌃⌥A)") {
+                vm.requestSuggestion()
+            }
+            Spacer(minLength: 0)
+            sessionButton
+        }
+    }
+
+    /// Shows how many exchanges this session remembers; clicking starts a New
+    /// session. Takes two clicks so a stray click can't wipe a meeting.
+    private var sessionButton: some View {
+        let n = vm.memory.exchanges.count
+        return actionButton(confirmNewSession ? "Clear all?" : (n > 0 ? "\(n) · New" : "New"),
+                            systemImage: "brain",
+                            confirmNewSession ? .red : .gray,
+                            help: "This session remembers \(n) answer(s) and " +
+                                  "screen captures for follow-ups. Click to start a " +
+                                  "New session (clears memory + transcript; keeps " +
+                                  "résumé and job notes).") {
+            if confirmNewSession {
+                vm.newSession()
+                confirmNewSession = false
+            } else {
+                confirmNewSession = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    confirmNewSession = false
+                }
+            }
+        }
+    }
+
+    private func actionButton(_ title: String, systemImage: String, _ color: Color,
+                              help: String,
+                              action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10))
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .foregroundStyle(color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.12))
+            .cornerRadius(5)
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     private var scrollCaptureBar: some View {

@@ -10,6 +10,24 @@ struct TranscriptSegment: Sendable {
     let text: String
 }
 
+/// Everything the copilot remembers for one session (one meeting), so
+/// follow-ups ("optimize it", "what's the complexity?", "back to the first
+/// problem") build on earlier answers instead of starting from scratch. Kept
+/// until you start a New session; saved to disk so it survives a relaunch.
+struct SessionMemory: Codable, Sendable {
+    struct Exchange: Codable, Sendable {
+        let question: String
+        let answer: String
+        /// On-device OCR of the Screen / Scroll capture this answered, if any.
+        var screenText: String?
+    }
+    var startedAt = Date()
+    /// Every exchange this session, oldest first.
+    var exchanges: [Exchange] = []
+
+    var isEmpty: Bool { exchanges.isEmpty }
+}
+
 /// Swappable AI backend. Implement this to point the app at a different
 /// provider, a proxy server, or a local model — the rest of the app only
 /// depends on this protocol.
@@ -52,6 +70,7 @@ protocol AIProvider: Sendable {
         transcript: [TranscriptSegment],
         jobContext: String,
         screenshots: [Data],
+        memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error>
@@ -96,7 +115,69 @@ func copilotSystemPrompt(jobContext: String, style: AnswerStyle) -> String {
 }
 
 func copilotUserPrompt(transcript: [TranscriptSegment],
-                       screenshotCount: Int) -> String {
+                       screenshotCount: Int,
+                       memory: SessionMemory) -> String {
+    let ask = questionPrompt(transcript: transcript, screenshotCount: screenshotCount)
+    guard !memory.isEmpty else { return ask }
+    return """
+    \(sessionPrompt(memory))
+
+    If my question is a follow-up to anything above — e.g. "optimize it", \
+    "what's the complexity", "do it in another language", "why does that \
+    work", "what about edge cases", "go back to the first problem", or it \
+    refers to "that problem" / "the code" — answer in that context and build \
+    on the earlier answer (same problem, same approach unless asked to change \
+    it). If it's a new, unrelated question, ignore the session history.
+
+    \(ask)
+    """
+}
+
+/// How much session history goes into one request. The newest exchanges are
+/// sent in full until this budget is used up; older ones are listed by their
+/// question only, so a long interview keeps per-call cost and latency bounded.
+private let sessionBudgetChars = 24_000
+private let sessionAnswerChars = 4_000
+
+private func sessionPrompt(_ memory: SessionMemory) -> String {
+    func clip(_ s: String, _ n: Int) -> String {
+        s.count > n ? String(s.prefix(n)) + " …[truncated]" : s
+    }
+    func block(_ ex: SessionMemory.Exchange, _ number: Int) -> String {
+        var lines = ["<exchange n=\"\(number)\">"]
+        if let screen = ex.screenText, !screen.isEmpty {
+            lines.append("<screen_text>\n\(screen)\n</screen_text>")
+        }
+        lines.append("Q: \(ex.question)")
+        lines.append("A: \(ex.answer.isEmpty ? "(no answer)" : clip(ex.answer, sessionAnswerChars))")
+        lines.append("</exchange>")
+        return lines.joined(separator: "\n")
+    }
+
+    var full: [String] = []
+    var used = 0
+    var firstFull = memory.exchanges.count
+    for i in memory.exchanges.indices.reversed() {
+        let b = block(memory.exchanges[i], i + 1)
+        if used + b.count > sessionBudgetChars, !full.isEmpty { break }
+        full.insert(b, at: 0)
+        used += b.count
+        firstFull = i
+    }
+
+    var out = "This interview session so far (exchange 1 is the oldest; " +
+        "screen_text is text read from my screen capture for that exchange):"
+    if firstFull > 0 {
+        let older = memory.exchanges[..<firstFull].enumerated().map {
+            "#\($0.offset + 1): \(clip($0.element.question, 200))"
+        }
+        out += "\n\nEarlier questions (answers omitted):\n" + older.joined(separator: "\n")
+    }
+    return out + "\n\n" + full.joined(separator: "\n\n")
+}
+
+private func questionPrompt(transcript: [TranscriptSegment],
+                            screenshotCount: Int) -> String {
     let convo = transcript.map { seg -> String in
         let who = seg.speaker == .interviewer ? "INTERVIEWER" : "ME"
         return "\(who): \(seg.text)"
@@ -161,6 +242,7 @@ struct AnthropicProvider: AIProvider {
         transcript: [TranscriptSegment],
         jobContext: String,
         screenshots: [Data],
+        memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error> {
@@ -168,7 +250,7 @@ struct AnthropicProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(transcript: transcript, jobContext: jobContext,
-                                  screenshots: screenshots, style: style,
+                                  screenshots: screenshots, memory: memory, style: style,
                                   continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -182,6 +264,7 @@ struct AnthropicProvider: AIProvider {
         transcript: [TranscriptSegment],
         jobContext: String,
         screenshots: [Data],
+        memory: SessionMemory,
         style: AnswerStyle,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
@@ -193,7 +276,7 @@ struct AnthropicProvider: AIProvider {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
 
         let system = copilotSystemPrompt(jobContext: jobContext, style: style)
-        let userText = copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count)
+        let userText = copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count, memory: memory)
 
         var content: [[String: Any]] = [["type": "text", "text": userText]]
         for (i, shot) in screenshots.enumerated() {
@@ -275,6 +358,7 @@ struct OpenAIProvider: AIProvider {
         transcript: [TranscriptSegment],
         jobContext: String,
         screenshots: [Data],
+        memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error> {
@@ -282,7 +366,7 @@ struct OpenAIProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(transcript: transcript, jobContext: jobContext,
-                                  screenshots: screenshots, style: style,
+                                  screenshots: screenshots, memory: memory, style: style,
                                   continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -296,6 +380,7 @@ struct OpenAIProvider: AIProvider {
         transcript: [TranscriptSegment],
         jobContext: String,
         screenshots: [Data],
+        memory: SessionMemory,
         style: AnswerStyle,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
@@ -310,7 +395,7 @@ struct OpenAIProvider: AIProvider {
         // reasoning). Newer models only accept the default temperature, so we
         // don't send one.
         var userContent: [[String: Any]] =
-            [["type": "text", "text": copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count)]]
+            [["type": "text", "text": copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count, memory: memory)]]
         for shot in screenshots {
             userContent.append(["type": "image_url", "image_url":
                 ["url": "data:image/png;base64,\(shot.base64EncodedString())"]])
@@ -378,6 +463,7 @@ struct DeepSeekProvider: AIProvider {
         transcript: [TranscriptSegment],
         jobContext: String,
         screenshots: [Data],
+        memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error> {
@@ -386,7 +472,7 @@ struct DeepSeekProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(transcript: transcript, jobContext: jobContext,
-                                  screenshots: screenshots, style: style,
+                                  screenshots: screenshots, memory: memory, style: style,
                                   thinking: think, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -400,6 +486,7 @@ struct DeepSeekProvider: AIProvider {
         transcript: [TranscriptSegment],
         jobContext: String,
         screenshots: [Data],
+        memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool,
         continuation: AsyncThrowingStream<String, Error>.Continuation
@@ -411,7 +498,7 @@ struct DeepSeekProvider: AIProvider {
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
 
         var userContent: [[String: Any]] =
-            [["type": "text", "text": copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count)]]
+            [["type": "text", "text": copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count, memory: memory)]]
         for shot in screenshots {
             userContent.append(["type": "image_url", "image_url":
                 ["url": "data:image/png;base64,\(shot.base64EncodedString())"]])
@@ -480,6 +567,7 @@ struct GeminiProvider: AIProvider {
         transcript: [TranscriptSegment],
         jobContext: String,
         screenshots: [Data],
+        memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error> {
@@ -487,7 +575,7 @@ struct GeminiProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(transcript: transcript, jobContext: jobContext,
-                                  screenshots: screenshots, style: style,
+                                  screenshots: screenshots, memory: memory, style: style,
                                   continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -501,6 +589,7 @@ struct GeminiProvider: AIProvider {
         transcript: [TranscriptSegment],
         jobContext: String,
         screenshots: [Data],
+        memory: SessionMemory,
         style: AnswerStyle,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
@@ -517,7 +606,7 @@ struct GeminiProvider: AIProvider {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         var parts: [[String: Any]] =
-            [["text": copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count)]]
+            [["text": copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count, memory: memory)]]
         for shot in screenshots {
             parts.append(["inline_data":
                 ["mime_type": "image/png", "data": shot.base64EncodedString()]])
@@ -585,6 +674,7 @@ struct EchoProvider: AIProvider {
         transcript: [TranscriptSegment],
         jobContext: String,
         screenshots: [Data],
+        memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error> {

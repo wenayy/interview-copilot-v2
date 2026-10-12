@@ -146,6 +146,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Answer from screen  (⌃⌥S)", #selector(answerScreen))
         add("Scrolling screenshot  (⌃⌥L)", #selector(scrollScreenshot))
         menu.addItem(.separator())
+        add("New session  (clear memory + transcript)", #selector(newSession))
+        menu.addItem(.separator())
         add("Shortcuts:  ⌃⌥A answer · ⌃⌥S screen", #selector(noop))
         add("           ⌃⌥H hide · ⌃⌥M mic · ⌃⌥R résumé", #selector(noop))
         menu.addItem(.separator())
@@ -166,6 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func getAnswer() { vm.requestSuggestion() }
     @objc private func answerScreen() { vm.answerFromScreen() }
     @objc private func scrollScreenshot() { vm.toggleScrollCapture() }
+    @objc private func newSession() { vm.newSession() }
 
     private func setupHotKeys() {
         let hk = HotKeyCenter.shared

@@ -41,6 +41,10 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
 - **Scrolling screenshot** — select a region, scroll through it, and the AI
   answers from the whole thing (long problems, docs, or code that doesn't fit
   on one screen).
+- **Session memory** — remembers every answer and screen capture (text read
+  on-device) for the whole meeting, so "optimize it", "now in Java" or "back
+  to the first problem" builds on earlier answers. **New** starts a fresh
+  session for the next meeting; it also survives an app relaunch.
 - **Ask a question** — type any question in the ask bar and get an instant AI
   answer, or use **Ask Last** to ask the AI about what you just said out loud.
 - **Compact mode** — toggle Mini/Full to shrink the overlay during the interview,
@@ -145,6 +149,13 @@ takes effect.
    over the area, then scroll through it slowly, pausing briefly as you go. A
    frame is grabbed each time the content settles (up to 10). Press **⌃⌥L**
    again (or **Done**) to send all frames to the AI.
+6. Ask follow-ups normally (typed, spoken, or Ask Last). The copilot remembers
+   the whole session — answers plus the text of each Screen/Scroll capture —
+   so follow-ups stay on the same problem. The newest exchanges are sent in
+   full and older ones as just their questions, so cost stays flat in a long
+   interview. Before the next meeting, click **N · New** (twice to confirm) or
+   menu bar → **New session**. This clears memory and the transcript but
+   keeps your résumé and job notes.
 
 ### Ask a question
 
@@ -223,6 +234,9 @@ proctored environments.
 - Audio is sent to **your** chosen providers (OpenAI/Anthropic/Gemini/Deepgram)
   for transcription and answers, under **your** API keys.
 - Keys are stored locally in your macOS `UserDefaults`. Don't share them.
+- The current session's memory (questions, answers, captured screen text) is
+  saved to `~/Library/Application Support/InterviewCopilot/session.json` and
+  wiped when you start a **New session**.
 
 ---
 
@@ -261,6 +275,8 @@ Sources/InterviewCopilot/
   AppSettings.swift     persisted settings + Settings window
   ScreenGrabber.swift   one-shot screen / region capture for vision answers
   ScrollCapture.swift   region picker + scrolling-screenshot session
+  ScreenOCR.swift       on-device text recognition of captures (for memory)
+  SessionStore.swift    saves the current session's memory to disk
   HotKeys.swift         global hotkeys (Carbon RegisterEventHotKey)
 build_app.sh            build + sign + install to /Applications
 package.sh              build + zip for a GitHub Release
