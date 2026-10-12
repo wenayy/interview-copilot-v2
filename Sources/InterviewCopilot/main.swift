@@ -144,6 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         add("Get answer now  (⌃⌥A)", #selector(getAnswer))
         add("Answer from screen  (⌃⌥S)", #selector(answerScreen))
+        add("Scrolling screenshot  (⌃⌥L)", #selector(scrollScreenshot))
         menu.addItem(.separator())
         add("Shortcuts:  ⌃⌥A answer · ⌃⌥S screen", #selector(noop))
         add("           ⌃⌥H hide · ⌃⌥M mic · ⌃⌥R résumé", #selector(noop))
@@ -164,6 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func hideOverlay() { panel.orderOut(nil) }
     @objc private func getAnswer() { vm.requestSuggestion() }
     @objc private func answerScreen() { vm.answerFromScreen() }
+    @objc private func scrollScreenshot() { vm.toggleScrollCapture() }
 
     private func setupHotKeys() {
         let hk = HotKeyCenter.shared
@@ -172,6 +174,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hk.register(keyCode: Shortcuts.screen.keyCode) { [weak self] in
             self?.vm.answerFromScreen()
+        }
+        hk.register(keyCode: Shortcuts.scroll.keyCode) { [weak self] in
+            self?.vm.toggleScrollCapture()
         }
         hk.register(keyCode: Shortcuts.overlay.keyCode) { [weak self] in
             self?.toggleOverlay()

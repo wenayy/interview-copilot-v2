@@ -63,7 +63,7 @@ struct Shortcut {
 }
 
 enum Shortcuts {
-    // keyCodes: A=0, S=1, H=4, M=46, R=15, Q=12, C=8
+    // keyCodes: A=0, S=1, H=4, M=46, R=15, Q=12, C=8, L=37
     static let answer = Shortcut(label: "Answer (spoken question)", keys: "⌃⌥A", keyCode: 0)
     static let screen = Shortcut(label: "Answer from screen", keys: "⌃⌥S", keyCode: 1)
     static let overlay = Shortcut(label: "Show / hide overlay", keys: "⌃⌥H", keyCode: 4)
@@ -72,5 +72,7 @@ enum Shortcuts {
     static let askLast = Shortcut(label: "Ask last (what you said)", keys: "⌃⌥Q", keyCode: 12)
     static let compact = Shortcut(label: "Compact / full mode", keys: "⌃⌥C", keyCode: 8)
 
-    static let all = [answer, screen, overlay, mic, resume, askLast, compact]
+    static let scroll = Shortcut(label: "Scrolling screenshot (start / done)", keys: "⌃⌥L", keyCode: 37)
+
+    static let all = [answer, screen, scroll, overlay, mic, resume, askLast, compact]
 }

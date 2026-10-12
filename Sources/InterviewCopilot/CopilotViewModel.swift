@@ -53,6 +53,10 @@ final class CopilotViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(useResume, forKey: "useResume") }
     }
 
+    /// Scrolling screenshot in progress (overlay shows Done / Cancel).
+    @Published var scrollCapturing = false
+    @Published var scrollFrames = 0
+
     /// Only the last N transcript lines are sent to the model, to keep per-call
     /// token cost flat over a long interview.
     private let transcriptWindow = 14
@@ -63,6 +67,8 @@ final class CopilotViewModel: ObservableObject {
     private let settings: AppSettings
     private var provider: AIProvider = EchoProvider()
     private var suggestionTask: Task<Void, Never>?
+    private let regionPicker = RegionPicker()
+    private var scrollSession: ScrollCaptureSession?
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -253,7 +259,7 @@ final class CopilotViewModel: ObservableObject {
     }
 
     /// Manually re-request an answer (hotkey / Answer / Regenerate button).
-    func requestSuggestion() { runSuggestion(screenshot: nil) }
+    func requestSuggestion() { runSuggestion(screenshots: []) }
 
     /// Capture the current screen and answer what's shown on it (coding tasks,
     /// MCQs, shared docs). Bound to ⌥⌘S and the "Screen" button.
@@ -266,7 +272,7 @@ final class CopilotViewModel: ObservableObject {
             do {
                 let png = try await ScreenGrabber.capturePNG()
                 await MainActor.run { self.status = self.runningStatus() }
-                await self.stream(screenshot: png)
+                await self.stream(screenshots: [png])
             } catch {
                 await MainActor.run {
                     self.suggestion = "⚠️ Couldn't read screen: " +
@@ -276,17 +282,68 @@ final class CopilotViewModel: ObservableObject {
         }
     }
 
-    private func runSuggestion(screenshot: Data?) {
-        suggestionTask?.cancel()
-        suggestion = ""
-        suggestionTask = Task { [weak self] in
-            await self?.stream(screenshot: screenshot)
+    // MARK: - Scrolling screenshot
+
+    /// ⌃⌥L / the Scroll button: first press picks a region and starts
+    /// capturing, second press finishes and sends the frames.
+    func toggleScrollCapture() {
+        if scrollCapturing { finishScrollCapture() } else { startScrollCapture() }
+    }
+
+    func startScrollCapture() {
+        guard scrollSession == nil else { return }
+        status = "Drag over the region to capture (Esc to cancel)"
+        Task {
+            guard let region = await regionPicker.pick() else {
+                status = runningStatus()
+                return
+            }
+            let session = ScrollCaptureSession(region: region)
+            session.onFrame = { [weak self] n in
+                self?.scrollFrames = n
+                self?.status = "Scroll capture: \(n)/\(ScrollCaptureSession.maxFrames) " +
+                    "frames — ⌃⌥L when done"
+            }
+            session.onAutoFinish = { [weak self] in self?.finishScrollCapture() }
+            scrollSession = session
+            scrollFrames = 0
+            scrollCapturing = true
+            status = "Scroll the region slowly, pausing briefly — ⌃⌥L when done"
+            session.start()
         }
     }
 
-    private func stream(screenshot: Data?) async {
+    func finishScrollCapture() {
+        guard let session = scrollSession else { return }
+        let frames = session.stop()
+        scrollSession = nil
+        scrollCapturing = false
+        guard !frames.isEmpty else {
+            status = "Scroll capture got no frames — try again"
+            return
+        }
+        status = "Read \(frames.count) frame(s) — answering…"
+        runSuggestion(screenshots: frames)
+    }
+
+    func cancelScrollCapture() {
+        _ = scrollSession?.stop()
+        scrollSession = nil
+        scrollCapturing = false
+        status = runningStatus()
+    }
+
+    private func runSuggestion(screenshots: [Data]) {
+        suggestionTask?.cancel()
+        suggestion = ""
+        suggestionTask = Task { [weak self] in
+            await self?.stream(screenshots: screenshots)
+        }
+    }
+
+    private func stream(screenshots: [Data]) async {
         let snapshot = Array(transcript.suffix(transcriptWindow))
-        if snapshot.isEmpty && screenshot == nil {
+        if snapshot.isEmpty && screenshots.isEmpty {
             suggestion = "No question captured yet. Start listening and wait " +
                 "for cyan Q: lines to appear, or use Screen for an " +
                 "on-screen question."
@@ -299,7 +356,7 @@ final class CopilotViewModel: ObservableObject {
 
         // DeepSeek doesn't support vision — fall back to OpenAI for screenshots.
         var activeProvider = provider
-        if screenshot != nil && settings.provider == .deepseek {
+        if !screenshots.isEmpty && settings.provider == .deepseek {
             let oaiKey = settings.openAIKey.trimmingCharacters(in: .whitespacesAndNewlines)
             if !oaiKey.isEmpty {
                 activeProvider = OpenAIProvider(apiKey: oaiKey,
@@ -316,7 +373,7 @@ final class CopilotViewModel: ObservableObject {
         do {
             for try await delta in activeProvider.streamSuggestion(
                 transcript: snapshot, jobContext: ctx,
-                screenshot: screenshot, style: style, thinking: think) {
+                screenshots: screenshots, style: style, thinking: think) {
                 if Task.isCancelled { return }
                 suggestion += delta
             }
@@ -410,7 +467,7 @@ final class CopilotViewModel: ObservableObject {
             do {
                 for try await delta in self.provider.streamSuggestion(
                     transcript: snapshot + [.init(speaker: .interviewer, text: question)],
-                    jobContext: ctx, screenshot: nil, style: style, thinking: think) {
+                    jobContext: ctx, screenshots: [], style: style, thinking: think) {
                     if Task.isCancelled { return }
                     self.suggestion += delta
                 }

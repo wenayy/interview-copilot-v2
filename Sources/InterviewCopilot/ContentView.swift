@@ -11,6 +11,10 @@ struct ContentView: View {
             header
             controls
 
+            if vm.scrollCapturing {
+                scrollCaptureBar
+            }
+
             if showKeys {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(Shortcuts.all, id: \.keys) { s in
@@ -170,11 +174,40 @@ struct ContentView: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.orange)
+            Button("Scroll") { vm.toggleScrollCapture() }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.pink)
+                .help("Scrolling screenshot: select a region, scroll it, " +
+                      "then Done (⌃⌥L)")
             Button("Answer") { vm.requestSuggestion() }
                 .buttonStyle(.plain)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.cyan)
         }
+    }
+
+    private var scrollCaptureBar: some View {
+        HStack(spacing: 8) {
+            Circle().fill(Color.red).frame(width: 7, height: 7)
+            Text("Capturing · \(vm.scrollFrames)/\(ScrollCaptureSession.maxFrames)")
+                .font(.system(size: 11, weight: .semibold))
+            Text("scroll slowly, pause briefly")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.5))
+            Spacer()
+            Button("Cancel") { vm.cancelScrollCapture() }
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.7))
+            Button("Done") { vm.finishScrollCapture() }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.pink)
+        }
+        .padding(6)
+        .background(Color.red.opacity(0.12))
+        .cornerRadius(6)
     }
 
     private var transcriptView: some View {

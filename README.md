@@ -38,6 +38,9 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
 - **Answer styles**: Concise · Detailed · STAR (behavioral) · Code (with complexity).
 - **Screen answers** — capture your screen and answer what's *shown* (coding
   problems, multiple-choice, shared docs) using a vision model.
+- **Scrolling screenshot** — select a region, scroll through it, and the AI
+  answers from the whole thing (long problems, docs, or code that doesn't fit
+  on one screen).
 - **Ask a question** — type any question in the ask bar and get an instant AI
   answer, or use **Ask Last** to ask the AI about what you just said out loud.
 - **Compact mode** — toggle Mini/Full to shrink the overlay during the interview,
@@ -138,6 +141,10 @@ takes effect.
    - **Auto** on → answers each question automatically.
    - **Auto** off → press **⌃⌥A** (or click **Answer**) when you want one.
 4. For an on-screen question (coding/MCQ), press **⌃⌥S** (or **Screen**).
+5. For a question longer than the screen, press **⌃⌥L** (or **Scroll**), drag
+   over the area, then scroll through it slowly, pausing briefly as you go. A
+   frame is grabbed each time the content settles (up to 10). Press **⌃⌥L**
+   again (or **Done**) to send all frames to the AI.
 
 ### Ask a question
 
@@ -162,6 +169,7 @@ Great for keeping the overlay small and out of the way during a live interview.
 |---|---|
 | **⌃⌥A** | Answer the spoken question |
 | **⌃⌥S** | Answer from the screen |
+| **⌃⌥L** | Scrolling screenshot — start, then press again to send |
 | **⌃⌥H** | Show / hide the overlay |
 | **⌃⌥M** | Toggle mic listening |
 | **⌃⌥R** | Toggle whether answers use your résumé |
@@ -251,7 +259,8 @@ Sources/InterviewCopilot/
   DeepgramEngine.swift  Deepgram streaming engine
   AIProvider.swift      OpenAI / Anthropic / Gemini providers + prompts
   AppSettings.swift     persisted settings + Settings window
-  ScreenGrabber.swift   one-shot screen capture for vision answers
+  ScreenGrabber.swift   one-shot screen / region capture for vision answers
+  ScrollCapture.swift   region picker + scrolling-screenshot session
   HotKeys.swift         global hotkeys (Carbon RegisterEventHotKey)
 build_app.sh            build + sign + install to /Applications
 package.sh              build + zip for a GitHub Release

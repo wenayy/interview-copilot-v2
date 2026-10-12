@@ -46,11 +46,12 @@ enum AnswerStyle: String, CaseIterable, Identifiable, Sendable {
 
 protocol AIProvider: Sendable {
     /// Stream a suggested answer for the most recent interviewer question,
-    /// given the running transcript, optional on-screen image, and answer style.
+    /// given the running transcript, optional on-screen images (one screen
+    /// grab, or the ordered frames of a scrolling screenshot), and answer style.
     func streamSuggestion(
         transcript: [TranscriptSegment],
         jobContext: String,
-        screenshot: Data?,
+        screenshots: [Data],
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error>
@@ -95,14 +96,28 @@ func copilotSystemPrompt(jobContext: String, style: AnswerStyle) -> String {
 }
 
 func copilotUserPrompt(transcript: [TranscriptSegment],
-                       hasScreenshot: Bool) -> String {
+                       screenshotCount: Int) -> String {
     let convo = transcript.map { seg -> String in
         let who = seg.speaker == .interviewer ? "INTERVIEWER" : "ME"
         return "\(who): \(seg.text)"
     }.joined(separator: "\n")
     let convoBlock = convo.isEmpty ? "(no transcript yet)" : convo
 
-    if hasScreenshot {
+    if screenshotCount > 1 {
+        return """
+        \(screenshotCount) screenshots are attached, in order. They are a \
+        scrolling capture of ONE region of my screen, top to bottom — together \
+        they show a single long question, task, or document. Consecutive \
+        screenshots may overlap; treat overlapping parts as the same content, \
+        not repeated text. ANSWER WHAT THE SCREENSHOTS SHOW, reading them as \
+        one continuous page. Use the transcript below only as extra \
+        background, not as the question.
+
+        Transcript (background only):
+        \(convoBlock)
+        """
+    }
+    if screenshotCount == 1 {
         return """
         A screenshot of my screen is attached. It contains the actual question \
         or task (e.g. a coding problem, a multiple-choice question, or a \
@@ -135,14 +150,17 @@ struct AnthropicProvider: AIProvider {
     /// Fast model keeps latency low for live suggestions. Swap to
     /// `claude-opus-4-8` for maximum quality if latency is acceptable.
     var model: String = "claude-sonnet-4-6"
-    var maxTokens: Int = 640
+    /// The Messages API requires a cap. It's set high so long answers (full
+    /// code solutions) never get cut off; you're only billed for what the
+    /// model actually writes, and the answer style keeps short answers short.
+    var maxTokens: Int = 64_000
 
     private let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
 
     func streamSuggestion(
         transcript: [TranscriptSegment],
         jobContext: String,
-        screenshot: Data?,
+        screenshots: [Data],
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error> {
@@ -150,7 +168,7 @@ struct AnthropicProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(transcript: transcript, jobContext: jobContext,
-                                  screenshot: screenshot, style: style,
+                                  screenshots: screenshots, style: style,
                                   continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -163,7 +181,7 @@ struct AnthropicProvider: AIProvider {
     private func run(
         transcript: [TranscriptSegment],
         jobContext: String,
-        screenshot: Data?,
+        screenshots: [Data],
         style: AnswerStyle,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
@@ -175,13 +193,13 @@ struct AnthropicProvider: AIProvider {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
 
         let system = copilotSystemPrompt(jobContext: jobContext, style: style)
-        let userText = copilotUserPrompt(transcript: transcript, hasScreenshot: screenshot != nil)
+        let userText = copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count)
 
         var content: [[String: Any]] = [["type": "text", "text": userText]]
-        if let shot = screenshot {
+        for (i, shot) in screenshots.enumerated() {
             content.insert(["type": "image", "source": [
                 "type": "base64", "media_type": "image/png",
-                "data": shot.base64EncodedString()]], at: 0)
+                "data": shot.base64EncodedString()]], at: i)
         }
 
         let body: [String: Any] = [
@@ -250,14 +268,13 @@ struct OpenAIProvider: AIProvider {
     /// Fast, cheap model keeps latency low for live suggestions. Swap to
     /// `gpt-4o` or another model in Settings for higher quality.
     var model: String = "gpt-4o-mini"
-    var maxTokens: Int = 640
 
     private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
 
     func streamSuggestion(
         transcript: [TranscriptSegment],
         jobContext: String,
-        screenshot: Data?,
+        screenshots: [Data],
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error> {
@@ -265,7 +282,7 @@ struct OpenAIProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(transcript: transcript, jobContext: jobContext,
-                                  screenshot: screenshot, style: style,
+                                  screenshots: screenshots, style: style,
                                   continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -278,7 +295,7 @@ struct OpenAIProvider: AIProvider {
     private func run(
         transcript: [TranscriptSegment],
         jobContext: String,
-        screenshot: Data?,
+        screenshots: [Data],
         style: AnswerStyle,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
@@ -288,20 +305,19 @@ struct OpenAIProvider: AIProvider {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
 
-        // Newer models (gpt-5.x, o-series) require `max_completion_tokens` and
-        // reject `max_tokens`; they also only accept the default temperature,
-        // so we don't send one. `max_completion_tokens` is accepted by gpt-4o
-        // too, so it's safe across the board.
+        // No output cap: the model's own maximum applies, so long code answers
+        // aren't cut off (reasoning models also spend part of any cap on hidden
+        // reasoning). Newer models only accept the default temperature, so we
+        // don't send one.
         var userContent: [[String: Any]] =
-            [["type": "text", "text": copilotUserPrompt(transcript: transcript, hasScreenshot: screenshot != nil)]]
-        if let shot = screenshot {
+            [["type": "text", "text": copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count)]]
+        for shot in screenshots {
             userContent.append(["type": "image_url", "image_url":
                 ["url": "data:image/png;base64,\(shot.base64EncodedString())"]])
         }
 
         let body: [String: Any] = [
             "model": model,
-            "max_completion_tokens": maxTokens,
             "stream": true,
             "messages": [
                 ["role": "system",
@@ -355,14 +371,13 @@ struct OpenAIProvider: AIProvider {
 struct DeepSeekProvider: AIProvider {
     var apiKey: String
     var model: String = "deepseek-v4-flash"
-    var maxTokens: Int = 640
 
     private let endpoint = URL(string: "https://api.deepseek.com/v1/chat/completions")!
 
     func streamSuggestion(
         transcript: [TranscriptSegment],
         jobContext: String,
-        screenshot: Data?,
+        screenshots: [Data],
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error> {
@@ -371,7 +386,7 @@ struct DeepSeekProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(transcript: transcript, jobContext: jobContext,
-                                  screenshot: screenshot, style: style,
+                                  screenshots: screenshots, style: style,
                                   thinking: think, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -384,7 +399,7 @@ struct DeepSeekProvider: AIProvider {
     private func run(
         transcript: [TranscriptSegment],
         jobContext: String,
-        screenshot: Data?,
+        screenshots: [Data],
         style: AnswerStyle,
         thinking: Bool,
         continuation: AsyncThrowingStream<String, Error>.Continuation
@@ -396,15 +411,16 @@ struct DeepSeekProvider: AIProvider {
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
 
         var userContent: [[String: Any]] =
-            [["type": "text", "text": copilotUserPrompt(transcript: transcript, hasScreenshot: screenshot != nil)]]
-        if let shot = screenshot {
+            [["type": "text", "text": copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count)]]
+        for shot in screenshots {
             userContent.append(["type": "image_url", "image_url":
                 ["url": "data:image/png;base64,\(shot.base64EncodedString())"]])
         }
 
-        var body: [String: Any] = [
+        // No `max_tokens`: the model's default limit applies, so long answers
+        // aren't cut off.
+        let body: [String: Any] = [
             "model": model,
-            "max_tokens": maxTokens,
             "stream": true,
             "thinking": ["type": thinking ? "enabled" : "disabled"],
             "messages": [
@@ -413,9 +429,6 @@ struct DeepSeekProvider: AIProvider {
                 ["role": "user", "content": userContent]
             ]
         ]
-        if thinking {
-            body.removeValue(forKey: "max_tokens")
-        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
@@ -462,12 +475,11 @@ struct GeminiProvider: AIProvider {
     var apiKey: String
     /// `gemini-2.0-flash` is fast and available on the free tier.
     var model: String = "gemini-2.0-flash"
-    var maxTokens: Int = 640
 
     func streamSuggestion(
         transcript: [TranscriptSegment],
         jobContext: String,
-        screenshot: Data?,
+        screenshots: [Data],
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error> {
@@ -475,7 +487,7 @@ struct GeminiProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(transcript: transcript, jobContext: jobContext,
-                                  screenshot: screenshot, style: style,
+                                  screenshots: screenshots, style: style,
                                   continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -488,7 +500,7 @@ struct GeminiProvider: AIProvider {
     private func run(
         transcript: [TranscriptSegment],
         jobContext: String,
-        screenshot: Data?,
+        screenshots: [Data],
         style: AnswerStyle,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
@@ -505,8 +517,8 @@ struct GeminiProvider: AIProvider {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         var parts: [[String: Any]] =
-            [["text": copilotUserPrompt(transcript: transcript, hasScreenshot: screenshot != nil)]]
-        if let shot = screenshot {
+            [["text": copilotUserPrompt(transcript: transcript, screenshotCount: screenshots.count)]]
+        for shot in screenshots {
             parts.append(["inline_data":
                 ["mime_type": "image/png", "data": shot.base64EncodedString()]])
         }
@@ -516,10 +528,11 @@ struct GeminiProvider: AIProvider {
                 "parts": [["text": copilotSystemPrompt(jobContext: jobContext,
                                                        style: style)]]
             ],
+            // No `maxOutputTokens`: the model's own maximum applies (2.5
+            // "thinking" models would otherwise burn the cap before answering).
             "contents": [
                 ["role": "user", "parts": parts]
-            ],
-            "generationConfig": ["maxOutputTokens": maxTokens]
+            ]
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -571,7 +584,7 @@ struct EchoProvider: AIProvider {
     func streamSuggestion(
         transcript: [TranscriptSegment],
         jobContext: String,
-        screenshot: Data?,
+        screenshots: [Data],
         style: AnswerStyle,
         thinking: Bool
     ) -> AsyncThrowingStream<String, Error> {
