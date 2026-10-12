@@ -70,14 +70,19 @@ struct ContentView: View {
 
             // Suggested answer
             ScrollView {
-                Text(vm.suggestion.isEmpty
-                     ? "Suggested answers appear here when the interviewer asks a question."
-                     : vm.suggestion)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(vm.suggestion.isEmpty
-                                     ? .white.opacity(0.35) : .white)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Group {
+                    if vm.suggestion.isEmpty {
+                        Text(vm.waitingForAnswer
+                             ? "Thinking…"
+                             : "Suggested answers appear here when the interviewer asks a question.")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.35))
+                    } else {
+                        AnswerView(markdown: vm.suggestion)
+                    }
+                }
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxHeight: .infinity)
 
@@ -139,9 +144,55 @@ struct ContentView: View {
     // actions on their own row so nothing gets clipped at overlay width.
     private var controls: some View {
         VStack(alignment: .leading, spacing: 6) {
+            aiRow
             optionsRow
             actionsRow
         }
+    }
+
+    /// Which AI answers, and which reads Screen / Scroll captures.
+    private var aiRow: some View {
+        HStack(spacing: 6) {
+            rowLabel("AI")
+            Picker("", selection: Binding(get: { vm.providerKind },
+                                          set: { vm.setProvider($0) })) {
+                ForEach(AppSettings.ProviderKind.allCases) { k in
+                    Text(k.shortLabel + (vm.hasKey(k) ? "" : " (no key)")).tag(k)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .font(.system(size: 11))
+            .fixedSize()
+            .help("Answers: \(vm.providerKind.shortLabel) · " +
+                  "\(vm.modelName(vm.providerKind)). Memory carries over when you switch.")
+
+            rowLabel("Screen")
+                .padding(.leading, 6)
+            Picker("", selection: Binding(get: { vm.screenChoice },
+                                          set: { vm.setScreenChoice($0) })) {
+                ForEach(AppSettings.ScreenProvider.allCases) { c in
+                    if let k = c.kind {
+                        Text(k.shortLabel + (vm.hasKey(k) ? "" : " (no key)")).tag(c)
+                    } else {
+                        Text("Auto (\(vm.autoScreenKind.shortLabel))").tag(c)
+                    }
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .font(.system(size: 11))
+            .fixedSize()
+            .help("Screen / Scroll captures: \(vm.screenProviderKind.shortLabel) · " +
+                  "\(vm.modelName(vm.screenProviderKind)). DeepSeek can't read images.")
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func rowLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white.opacity(0.45))
     }
 
     private var optionsRow: some View {
@@ -175,8 +226,9 @@ struct ContentView: View {
             Toggle("Think", isOn: $vm.deepThink)
                 .toggleStyle(.checkbox)
                 .font(.system(size: 11))
-                .help("DeepSeek thinking mode — deeper reasoning before " +
-                      "answering (~3-5s). Off = fast instant answers.")
+                .help("Deeper reasoning before answering (GPT, Claude, DeepSeek) " +
+                      "— more accurate on hard and coding questions, a few " +
+                      "seconds slower. Off = fastest.")
 
             Spacer(minLength: 0)
         }
@@ -203,17 +255,17 @@ struct ContentView: View {
         }
     }
 
-    /// Shows how many exchanges this session remembers; clicking starts a New
+    /// Shows how many answers this session remembers; clicking starts a New
     /// session. Takes two clicks so a stray click can't wipe a meeting.
     private var sessionButton: some View {
-        let n = vm.memory.exchanges.count
+        let n = vm.memory.answerCount
         return actionButton(confirmNewSession ? "Clear all?" : (n > 0 ? "\(n) · New" : "New"),
                             systemImage: "brain",
                             confirmNewSession ? .red : .gray,
-                            help: "This session remembers \(n) answer(s) and " +
-                                  "screen captures for follow-ups. Click to start a " +
-                                  "New session (clears memory + transcript; keeps " +
-                                  "résumé and job notes).") {
+                            help: "This session remembers the whole conversation, " +
+                                  "every screen capture and \(n) answer(s). Click to " +
+                                  "start a New session (clears memory + transcript; " +
+                                  "keeps résumé and job notes).") {
             if confirmNewSession {
                 vm.newSession()
                 confirmNewSession = false

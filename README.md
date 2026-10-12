@@ -36,14 +36,26 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
 - **AI answers** streamed live, from **OpenAI, Anthropic (Claude), or Google Gemini**
   — your key, your model.
 - **Answer styles**: Concise · Detailed · STAR (behavioral) · Code (with complexity).
+- **Think** — deeper reasoning before answering (GPT-5.x reasoning effort,
+  Claude effort/adaptive thinking, DeepSeek thinking mode). On = more accurate
+  on hard and coding questions; off = fastest.
+- **Switch AI from the overlay** — the **AI** menu picks GPT / Claude /
+  DeepSeek / Gemini for answers, and **Screen** picks who reads Screen/Scroll
+  captures (Auto = the answer AI, or GPT when that's DeepSeek, which can't read
+  images). Session memory carries over when you switch.
+- **Glanceable answers** — a bold one-line answer plus short bullets with the
+  key phrases highlighted, so you can glance and say it in your own words;
+  code shows in a formatted block.
 - **Screen answers** — capture your screen and answer what's *shown* (coding
   problems, multiple-choice, shared docs) using a vision model.
 - **Scrolling screenshot** — select a region, scroll through it, and the AI
   answers from the whole thing (long problems, docs, or code that doesn't fit
   on one screen).
-- **Session memory** — remembers every answer and screen capture (text read
-  on-device) for the whole meeting, so "optimize it", "now in Java" or "back
-  to the first problem" builds on earlier answers. **New** starts a fresh
+- **Session memory** — remembers the whole meeting: everything the interviewer
+  and you said (even with Auto off), every screen capture (text read
+  on-device), typed questions, and every answer. Follow-ups like "optimize it"
+  or "back to the first problem" build on it, and answers are told never to
+  invent résumé facts or contradict earlier ones. **New** starts a fresh
   session for the next meeting; it also survives an app relaunch.
 - **Ask a question** — type any question in the ask bar and get an instant AI
   answer, or use **Ask Last** to ask the AI about what you just said out loud.
@@ -150,10 +162,11 @@ takes effect.
    frame is grabbed each time the content settles (up to 10). Press **⌃⌥L**
    again (or **Done**) to send all frames to the AI.
 6. Ask follow-ups normally (typed, spoken, or Ask Last). The copilot remembers
-   the whole session — answers plus the text of each Screen/Scroll capture —
-   so follow-ups stay on the same problem. The newest exchanges are sent in
-   full and older ones as just their questions, so cost stays flat in a long
-   interview. Before the next meeting, click **N · New** (twice to confirm) or
+   the whole session as a timeline — both sides of the conversation, the text
+   of each Screen/Scroll capture, and its answers — so follow-ups stay on the
+   same problem. About the last ~15k tokens are sent in full and anything older
+   is condensed to the questions asked, so cost stays bounded in a long
+   interview (Claude caches the history, so follow-ups re-read it cheaply). Before the next meeting, click **N · New** (twice to confirm) or
    menu bar → **New session**. This clears memory and the transcript but
    keeps your résumé and job notes.
 
@@ -234,7 +247,7 @@ proctored environments.
 - Audio is sent to **your** chosen providers (OpenAI/Anthropic/Gemini/Deepgram)
   for transcription and answers, under **your** API keys.
 - Keys are stored locally in your macOS `UserDefaults`. Don't share them.
-- The current session's memory (questions, answers, captured screen text) is
+- The current session's memory (conversation, answers, captured screen text) is
   saved to `~/Library/Application Support/InterviewCopilot/session.json` and
   wiped when you start a **New session**.
 

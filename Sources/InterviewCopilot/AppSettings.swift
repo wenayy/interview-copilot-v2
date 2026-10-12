@@ -27,6 +27,21 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Which AI reads Screen / Scroll captures. DeepSeek can't read images, so
+    /// Auto uses the answer provider, or GPT when that's DeepSeek.
+    enum ScreenProvider: String, CaseIterable, Identifiable {
+        case auto, openai, anthropic, gemini
+        var id: String { rawValue }
+        var kind: ProviderKind? {
+            switch self {
+            case .auto: return nil
+            case .openai: return .openai
+            case .anthropic: return .anthropic
+            case .gemini: return .gemini
+            }
+        }
+    }
+
     enum TranscriptionEngine: String, CaseIterable, Identifiable {
         case apple, deepgram
         var id: String { rawValue }
@@ -75,6 +90,9 @@ final class AppSettings: ObservableObject {
     }
     /// Transcribe your own mic (green "Me" lines) for follow-up context.
     /// Off = interviewer-only, which halves transcription cost.
+    @Published var screenProvider: ScreenProvider {
+        didSet { d.set(screenProvider.rawValue, forKey: "screenProvider") }
+    }
     @Published var transcribeMic: Bool {
         didSet { d.set(transcribeMic, forKey: "transcribeMic") }
     }
@@ -116,15 +134,20 @@ final class AppSettings: ObservableObject {
             .flatMap(TranscriptionEngine.init(rawValue:))
             ?? (dgKey.isEmpty ? .apple : .deepgram)
         transcribeMic = (d.object(forKey: "transcribeMic") as? Bool) ?? true
+        screenProvider = d.string(forKey: "screenProvider")
+            .flatMap(ScreenProvider.init(rawValue:)) ?? .auto
     }
 
     var trimmedDeepgramKey: String {
         deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    var currentKey: String {
+    var currentKey: String { key(for: provider) }
+    var currentModel: String { model(for: provider) }
+
+    func key(for kind: ProviderKind) -> String {
         let raw: String
-        switch provider {
+        switch kind {
         case .openai: raw = openAIKey
         case .anthropic: raw = anthropicKey
         case .gemini: raw = geminiKey
@@ -134,16 +157,28 @@ final class AppSettings: ObservableObject {
         // header value makes Foundation drop the header entirely → 401.
         return raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    var currentModel: String {
+    func model(for kind: ProviderKind) -> String {
         let m: String
-        switch provider {
+        switch kind {
         case .openai: m = openAIModel
         case .anthropic: m = anthropicModel
         case .gemini: m = geminiModel
         case .deepseek: m = deepseekModel
         }
         let trimmed = m.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? provider.defaultModel : trimmed
+        return trimmed.isEmpty ? kind.defaultModel : trimmed
+    }
+}
+
+extension AppSettings.ProviderKind {
+    /// Compact name for the overlay's pickers.
+    var shortLabel: String {
+        switch self {
+        case .openai: return "GPT"
+        case .anthropic: return "Claude"
+        case .gemini: return "Gemini"
+        case .deepseek: return "DeepSeek"
+        }
     }
 }
 

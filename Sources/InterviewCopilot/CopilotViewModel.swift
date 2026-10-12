@@ -28,8 +28,12 @@ final class CopilotViewModel: ObservableObject {
     }
     @Published var answerStyle: AnswerStyle = .concise
     /// When on, a finalized interviewer question auto-fires an answer (uses your
-    /// API key). Off = the key is used only when you click Answer/Screen.
-    @Published var autoAnswer = true
+    /// API key). Off = the key is used only when you click Answer/Screen. Either
+    /// way, everything said still goes into session memory. Persisted.
+    @Published var autoAnswer: Bool =
+        (UserDefaults.standard.object(forKey: "autoAnswer") as? Bool) ?? true {
+        didSet { UserDefaults.standard.set(autoAnswer, forKey: "autoAnswer") }
+    }
     /// How many API answer-requests this session (visible in the overlay).
     @Published var apiCalls = 0
     /// Flips true once system audio is actually flowing (capture works).
@@ -45,17 +49,24 @@ final class CopilotViewModel: ObservableObject {
     }
     /// Text typed into the "Ask a question" bar.
     @Published var questionText = ""
-    /// DeepSeek thinking mode — deeper reasoning before answering (slightly slower).
-    @Published var deepThink = true
+    /// Deeper reasoning before answering: DeepSeek thinking mode, or medium
+    /// reasoning effort on GPT-5.x (off = fastest). Persisted.
+    @Published var deepThink: Bool =
+        (UserDefaults.standard.object(forKey: "deepThink") as? Bool) ?? true {
+        didSet { UserDefaults.standard.set(deepThink, forKey: "deepThink") }
+    }
+    /// True from sending a request until its first words arrive, so the
+    /// overlay can say "Thinking…" instead of looking idle.
+    @Published var waitingForAnswer = false
     /// When off, the résumé/background is NOT sent — answers won't reference it.
     @Published var useResume: Bool =
         (UserDefaults.standard.object(forKey: "useResume") as? Bool) ?? true {
         didSet { UserDefaults.standard.set(useResume, forKey: "useResume") }
     }
 
-    /// This session's exchanges (answers + captured screen text), sent with
-    /// every request so follow-ups have context. Persisted so a relaunch
-    /// mid-meeting keeps it; cleared by New session.
+    /// This session's full timeline (both sides of the conversation, captured
+    /// screen text, typed questions, answers), sent with every request.
+    /// Persisted so a relaunch mid-meeting keeps it; cleared by New session.
     @Published private(set) var memory = SessionStore.load() {
         didSet { SessionStore.save(memory) }
     }
@@ -64,13 +75,9 @@ final class CopilotViewModel: ObservableObject {
     @Published var scrollCapturing = false
     @Published var scrollFrames = 0
 
-    /// Caps on what one exchange stores (the prompt applies its own budget).
+    /// Caps on what memory stores (the prompt applies its own budget).
     private let memoryScreenChars = 12_000
-    private let memoryMaxExchanges = 300
-
-    /// Only the last N transcript lines are sent to the model, to keep per-call
-    /// token cost flat over a long interview.
-    private let transcriptWindow = 14
+    private let memoryMaxEvents = 3_000
 
     private let capture = AudioCapture()
     private var interviewerEngine: SpeechEngine
@@ -160,23 +167,56 @@ final class CopilotViewModel: ObservableObject {
     /// Rebuild the AI backend from the current settings. Call after the user
     /// saves Settings.
     func rebuildProvider() {
-        let key = settings.currentKey
-        if !key.isEmpty {
-            switch settings.provider {
-            case .openai:
-                provider = OpenAIProvider(apiKey: key, model: settings.currentModel)
-            case .anthropic:
-                provider = AnthropicProvider(apiKey: key, model: settings.currentModel)
-            case .gemini:
-                provider = GeminiProvider(apiKey: key, model: settings.currentModel)
-            case .deepseek:
-                provider = DeepSeekProvider(apiKey: key, model: settings.currentModel)
-            }
+        if let p = makeProvider(settings.provider) {
+            provider = p
             status = "Using \(settings.provider.label) · \(settings.currentModel)"
         } else {
             provider = EchoProvider()
-            status = "No API key set — open Settings"
+            status = "No \(settings.provider.shortLabel) API key set — open Settings"
         }
+    }
+
+    private func makeProvider(_ kind: AppSettings.ProviderKind) -> AIProvider? {
+        let key = settings.key(for: kind)
+        guard !key.isEmpty else { return nil }
+        let model = settings.model(for: kind)
+        switch kind {
+        case .openai: return OpenAIProvider(apiKey: key, model: model)
+        case .anthropic: return AnthropicProvider(apiKey: key, model: model)
+        case .gemini: return GeminiProvider(apiKey: key, model: model)
+        case .deepseek: return DeepSeekProvider(apiKey: key, model: model)
+        }
+    }
+
+    // MARK: Provider switching (overlay)
+
+    var providerKind: AppSettings.ProviderKind { settings.provider }
+    var screenChoice: AppSettings.ScreenProvider { settings.screenProvider }
+
+    /// Switch the answering AI from the overlay. Session memory carries over.
+    func setProvider(_ kind: AppSettings.ProviderKind) {
+        settings.provider = kind
+        rebuildProvider()
+    }
+
+    func setScreenChoice(_ choice: AppSettings.ScreenProvider) {
+        settings.screenProvider = choice
+        let kind = screenProviderKind
+        status = "Screen / Scroll → \(kind.shortLabel) · \(settings.model(for: kind))"
+    }
+
+    func hasKey(_ kind: AppSettings.ProviderKind) -> Bool { !settings.key(for: kind).isEmpty }
+    func modelName(_ kind: AppSettings.ProviderKind) -> String { settings.model(for: kind) }
+
+    /// What Auto resolves to: the answer provider, or GPT when that's DeepSeek
+    /// (DeepSeek can't read images).
+    var autoScreenKind: AppSettings.ProviderKind {
+        settings.provider == .deepseek ? .openai : settings.provider
+    }
+
+    /// The AI that reads Screen / Scroll captures.
+    var screenProviderKind: AppSettings.ProviderKind {
+        settings.screenProvider.kind ?? autoScreenKind
     }
 
     /// True once Screen Recording is granted. Published so the UI can show a
@@ -242,6 +282,7 @@ final class CopilotViewModel: ObservableObject {
 
     func stop() {
         suggestionTask?.cancel()
+        waitingForAnswer = false
         Task { await capture.stopSystemAudio() }
         capture.stopMic()
         interviewerEngine.stop()
@@ -256,6 +297,7 @@ final class CopilotViewModel: ObservableObject {
         liveInterviewer = text
         guard isFinal, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         transcript.append(.init(speaker: .interviewer, text: text))
+        record(.interviewer, text)
         liveInterviewer = ""
         // A finalized interviewer utterance is our cue to answer — but only if
         // auto-answer is on (otherwise nothing hits your API key automatically).
@@ -266,6 +308,7 @@ final class CopilotViewModel: ObservableObject {
         liveMe = text
         guard isFinal, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         transcript.append(.init(speaker: .me, text: text))
+        record(.me, text)
         liveMe = ""
     }
 
@@ -353,8 +396,7 @@ final class CopilotViewModel: ObservableObject {
     }
 
     private func stream(screenshots: [Data]) async {
-        let snapshot = Array(transcript.suffix(transcriptWindow))
-        if snapshot.isEmpty && screenshots.isEmpty {
+        if !memory.hasInterviewerSpeech && screenshots.isEmpty {
             suggestion = "No question captured yet. Start listening and wait " +
                 "for cyan Q: lines to appear, or use Screen for an " +
                 "on-screen question."
@@ -363,55 +405,52 @@ final class CopilotViewModel: ObservableObject {
         let ctx = combinedContext()
         let style = answerStyle
         let think = deepThink
-        let mem = memory
-        let question: String
-        switch screenshots.count {
-        case 0: question = snapshot.last(where: { $0.speaker == .interviewer })?.text
-                    ?? "(spoken question)"
-        case 1: question = "[Screenshot of my screen — answer what it shows]"
-        default: question = "[Scrolling screenshot of my screen, " +
-                    "\(screenshots.count) frames — answer what it shows]"
+        let mem = memory                  // timeline as of this request
+        let sessionID = memory.id
+
+        // Captures go to the chosen Screen AI (DeepSeek can't read images).
+        var activeProvider = provider
+        if !screenshots.isEmpty {
+            let kind = screenProviderKind
+            if kind != settings.provider {
+                guard let p = makeProvider(kind) else {
+                    suggestion = "Screen / Scroll answers use \(kind.shortLabel), but " +
+                        "no \(kind.shortLabel) key is set. Add it in Settings or " +
+                        "pick another Screen AI in the overlay."
+                    return
+                }
+                activeProvider = p
+                status = "Screen → \(kind.shortLabel) · \(settings.model(for: kind))"
+            }
         }
         apiCalls += 1
 
-        // Read the capture's text on-device while the model answers; it's kept
-        // with this exchange so later follow-ups (even text-only ones to
-        // DeepSeek) know what the problem was.
-        let ocr: Task<String, Never>? = screenshots.isEmpty ? nil
-            : Task.detached(priority: .utility) { ScreenOCR.text(from: screenshots) }
-
-        // DeepSeek doesn't support vision — fall back to OpenAI for screenshots.
-        var activeProvider = provider
-        if !screenshots.isEmpty && settings.provider == .deepseek {
-            let oaiKey = settings.openAIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !oaiKey.isEmpty {
-                activeProvider = OpenAIProvider(apiKey: oaiKey,
-                                               model: settings.openAIModel.isEmpty
-                                                   ? "gpt-4o-mini" : settings.openAIModel)
-                status = "Screen → using GPT (DeepSeek has no vision)"
-            } else {
-                suggestion = "DeepSeek doesn't support images. Add an OpenAI key " +
-                    "in Settings so Screen can fall back to GPT."
-                return
+        // Put the capture in the timeline now (so it sits before its answer),
+        // and fill in its text once on-device OCR finishes. This runs even if
+        // the answer is cancelled or fails, so follow-ups can still refer to it.
+        if !screenshots.isEmpty {
+            let captureID = record(.screen, "(reading screen text…)")
+            Task { [weak self] in
+                let text = await Task.detached(priority: .utility) {
+                    ScreenOCR.text(from: screenshots)
+                }.value
+                self?.fillScreenText(captureID, text, session: sessionID)
             }
         }
 
+        waitingForAnswer = true
+        defer { if !Task.isCancelled { waitingForAnswer = false } }
         do {
             for try await delta in activeProvider.streamSuggestion(
-                transcript: snapshot, jobContext: ctx,
+                question: nil, jobContext: ctx,
                 screenshots: screenshots, memory: mem, style: style, thinking: think) {
                 if Task.isCancelled { return }
+                waitingForAnswer = false
                 suggestion += delta
             }
-            remember(question: question, answer: suggestion,
-                     screenText: await ocr?.value)
+            if !Task.isCancelled { record(.answer, suggestion) }
         } catch {
             suggestion = "⚠️ \(error.localizedDescription)"
-            // Keep a failed capture's text anyway, so a follow-up can still
-            // refer to that problem.
-            if let text = await ocr?.value, !text.isEmpty, !Task.isCancelled {
-                remember(question: question, answer: "", screenText: text)
-            }
         }
     }
 
@@ -460,7 +499,7 @@ final class CopilotViewModel: ObservableObject {
         let q = questionText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return }
         questionText = ""
-        askDirect(question: q)
+        askDirect(question: q, typed: true)
     }
 
     /// Grab your last spoken "Me:" lines and send as a question.
@@ -484,30 +523,33 @@ final class CopilotViewModel: ObservableObject {
                 "Make sure Mic is on and say your question, then tap Ask Last."
             return
         }
-        askDirect(question: q)
+        // Your spoken lines are already in the timeline, so don't record the
+        // question again.
+        askDirect(question: q, typed: false)
     }
 
-    private func askDirect(question: String) {
+    private func askDirect(question: String, typed: Bool) {
         suggestionTask?.cancel()
         suggestion = ""
         apiCalls += 1
+        let mem = memory                  // timeline before this question
+        if typed { record(.asked, question) }
         suggestionTask = Task { [weak self] in
             guard let self else { return }
-            let snapshot = Array(self.transcript.suffix(self.transcriptWindow))
             let ctx = self.combinedContext()
             let style = self.answerStyle
             let think = self.deepThink
-            let mem = self.memory
+            self.waitingForAnswer = true
+            defer { if !Task.isCancelled { self.waitingForAnswer = false } }
             do {
                 for try await delta in self.provider.streamSuggestion(
-                    transcript: snapshot + [.init(speaker: .interviewer, text: question)],
-                    jobContext: ctx, screenshots: [], memory: mem,
-                    style: style, thinking: think) {
+                    question: question, jobContext: ctx, screenshots: [],
+                    memory: mem, style: style, thinking: think) {
                     if Task.isCancelled { return }
+                    self.waitingForAnswer = false
                     self.suggestion += delta
                 }
-                self.remember(question: question, answer: self.suggestion,
-                              screenText: nil)
+                if !Task.isCancelled { self.record(.answer, self.suggestion) }
             } catch {
                 self.suggestion = "⚠️ \(error.localizedDescription)"
             }
@@ -516,8 +558,8 @@ final class CopilotViewModel: ObservableObject {
 
     // MARK: - Session memory
 
-    /// Start fresh for a new meeting: clears remembered answers, captured
-    /// screen text, the transcript, and the API counter. Your résumé and job
+    /// Start fresh for a new meeting: clears the session timeline (conversation,
+    /// captured screen text, answers), the transcript, and the API counter. Your résumé and job
     /// notes are kept (edit them under Context for each meeting).
     func newSession() {
         suggestionTask?.cancel()          // an in-flight answer won't be saved
@@ -527,21 +569,32 @@ final class CopilotViewModel: ObservableObject {
         liveInterviewer = ""
         liveMe = ""
         suggestion = ""
+        waitingForAnswer = false
         apiCalls = 0
         status = "New session — memory and transcript cleared"
     }
 
-    private func remember(question: String, answer: String, screenText: String?) {
-        if Task.isCancelled { return }    // replaced by a newer request / New session
-        let a = answer.trimmingCharacters(in: .whitespacesAndNewlines)
-        let screen = screenText?.trimmingCharacters(in: .whitespacesAndNewlines)
-            .prefix(memoryScreenChars)
-        guard !a.isEmpty || !(screen ?? "").isEmpty else { return }
-        memory.exchanges.append(.init(question: question, answer: a,
-                                      screenText: screen.map(String.init)))
-        if memory.exchanges.count > memoryMaxExchanges {
-            memory.exchanges.removeFirst(memory.exchanges.count - memoryMaxExchanges)
+    /// Append to the session timeline. Returns the event's id.
+    @discardableResult
+    private func record(_ kind: SessionMemory.Event.Kind, _ text: String) -> UUID {
+        let event = SessionMemory.Event(
+            kind: kind, text: text.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !event.text.isEmpty else { return event.id }
+        memory.events.append(event)
+        if memory.events.count > memoryMaxEvents {
+            memory.events.removeFirst(memory.events.count - memoryMaxEvents)
         }
+        return event.id
+    }
+
+    /// Fill in a capture's OCR text — unless a New session started meanwhile.
+    private func fillScreenText(_ id: UUID, _ text: String, session: UUID) {
+        guard memory.id == session,
+              let i = memory.events.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        memory.events[i].text = trimmed.isEmpty
+            ? "(no readable text on the captured screen)"
+            : String(trimmed.prefix(memoryScreenChars))
     }
 
     private func runningStatus() -> String {
