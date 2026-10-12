@@ -197,6 +197,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hk.register(keyCode: Shortcuts.compact.keyCode) { [weak self] in
             self?.vm.compactMode.toggle()
         }
+        hk.register(keyCode: Shortcuts.olderAnswer.keyCode) { [weak self] in
+            self?.vm.showOlderAnswer()
+        }
+        hk.register(keyCode: Shortcuts.newerAnswer.keyCode) { [weak self] in
+            self?.vm.showNewerAnswer()
+        }
     }
 
     private func toggleOverlay() {

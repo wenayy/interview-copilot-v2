@@ -43,6 +43,8 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
   DeepSeek / Gemini for answers, and **Screen** picks who reads Screen/Scroll
   captures (Auto = the answer AI, or GPT when that's DeepSeek, which can't read
   images). Session memory carries over when you switch.
+- **Previous answers** — a new answer doesn't lose the last two: use **‹ ›**
+  above the answer (or **⌃⌥[** / **⌃⌥]**) to look back.
 - **Glanceable answers** — a bold one-line answer plus short bullets with the
   key phrases highlighted, so you can glance and say it in your own words;
   code shows in a formatted block.
@@ -199,6 +201,7 @@ Great for keeping the overlay small and out of the way during a live interview.
 | **⌃⌥R** | Toggle whether answers use your résumé |
 | **⌃⌥Q** | Ask Last — ask AI about what you just said |
 | **⌃⌥C** | Toggle compact / full mode |
+| **⌃⌥[** / **⌃⌥]** | Previous answer / back toward the latest |
 
 These work even when your browser/Meet is focused. The **⌨︎** button in the
 overlay shows this list any time.

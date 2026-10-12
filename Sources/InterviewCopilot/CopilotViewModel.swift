@@ -55,6 +55,13 @@ final class CopilotViewModel: ObservableObject {
         (UserDefaults.standard.object(forKey: "deepThink") as? Bool) ?? true {
         didSet { UserDefaults.standard.set(deepThink, forKey: "deepThink") }
     }
+    /// The last couple of answers (newest first), so a new answer doesn't
+    /// lose the one before it. `viewingPrevious` is an index into it while
+    /// you're looking back; nil = showing the current answer.
+    @Published private(set) var previousAnswers: [String] = []
+    @Published private(set) var viewingPrevious: Int?
+    private let keepPreviousAnswers = 2
+
     /// True from sending a request until its first words arrive, so the
     /// overlay can say "Thinking…" instead of looking idle.
     @Published var waitingForAnswer = false
@@ -319,7 +326,7 @@ final class CopilotViewModel: ObservableObject {
     /// MCQs, shared docs). Bound to ⌥⌘S and the "Screen" button.
     func answerFromScreen() {
         suggestionTask?.cancel()
-        suggestion = ""
+        startNewAnswer()
         status = "Reading screen…"
         suggestionTask = Task { [weak self] in
             guard let self else { return }
@@ -389,7 +396,7 @@ final class CopilotViewModel: ObservableObject {
 
     private func runSuggestion(screenshots: [Data]) {
         suggestionTask?.cancel()
-        suggestion = ""
+        startNewAnswer()
         suggestionTask = Task { [weak self] in
             await self?.stream(screenshots: screenshots)
         }
@@ -530,7 +537,7 @@ final class CopilotViewModel: ObservableObject {
 
     private func askDirect(question: String, typed: Bool) {
         suggestionTask?.cancel()
-        suggestion = ""
+        startNewAnswer()
         apiCalls += 1
         let mem = memory                  // timeline before this question
         if typed { record(.asked, question) }
@@ -569,6 +576,8 @@ final class CopilotViewModel: ObservableObject {
         liveInterviewer = ""
         liveMe = ""
         suggestion = ""
+        previousAnswers = []
+        viewingPrevious = nil
         waitingForAnswer = false
         apiCalls = 0
         status = "New session — memory and transcript cleared"
@@ -595,6 +604,42 @@ final class CopilotViewModel: ObservableObject {
         memory.events[i].text = trimmed.isEmpty
             ? "(no readable text on the captured screen)"
             : String(trimmed.prefix(memoryScreenChars))
+    }
+
+    // MARK: - Previous answers
+
+    /// Before a new answer starts: keep the current one in the history and
+    /// jump back to showing the latest.
+    private func startNewAnswer() {
+        let current = suggestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !current.isEmpty, !current.hasPrefix("⚠️") {
+            previousAnswers.insert(suggestion, at: 0)
+            if previousAnswers.count > keepPreviousAnswers {
+                previousAnswers.removeLast(previousAnswers.count - keepPreviousAnswers)
+            }
+        }
+        suggestion = ""
+        viewingPrevious = nil
+    }
+
+    /// The answer the overlay shows: the current one, or a previous one.
+    var displayedAnswer: String {
+        if let i = viewingPrevious, previousAnswers.indices.contains(i) {
+            return previousAnswers[i]
+        }
+        return suggestion
+    }
+
+    /// Step back to an older answer (⌃⌥[).
+    func showOlderAnswer() {
+        let next = (viewingPrevious ?? -1) + 1
+        if previousAnswers.indices.contains(next) { viewingPrevious = next }
+    }
+
+    /// Step forward toward the current answer (⌃⌥]).
+    func showNewerAnswer() {
+        guard let i = viewingPrevious else { return }
+        viewingPrevious = i == 0 ? nil : i - 1
     }
 
     private func runningStatus() -> String {

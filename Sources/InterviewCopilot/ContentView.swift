@@ -68,17 +68,21 @@ struct ContentView: View {
                 Divider().overlay(.white.opacity(0.15))
             }
 
+            if !vm.previousAnswers.isEmpty {
+                answerNav
+            }
+
             // Suggested answer
             ScrollView {
                 Group {
-                    if vm.suggestion.isEmpty {
+                    if vm.displayedAnswer.isEmpty {
                         Text(vm.waitingForAnswer
                              ? "Thinking…"
                              : "Suggested answers appear here when the interviewer asks a question.")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.35))
                     } else {
-                        AnswerView(markdown: vm.suggestion)
+                        AnswerView(markdown: vm.displayedAnswer)
                     }
                 }
                 .textSelection(.enabled)
@@ -345,6 +349,35 @@ struct ContentView: View {
             .onChange(of: vm.transcript.count) { _, _ in
                 withAnimation { proxy.scrollTo("bottom") }
             }
+        }
+    }
+
+    /// ‹ Latest › — step back through the previous answers.
+    private var answerNav: some View {
+        let older = (vm.viewingPrevious ?? -1) + 1 < vm.previousAnswers.count
+        let label = vm.viewingPrevious.map { $0 == 0 ? "Previous answer" : "\($0 + 1) answers back" }
+            ?? "Latest answer"
+        return HStack(spacing: 8) {
+            Button { vm.showOlderAnswer() } label: {
+                Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .disabled(!older)
+            .foregroundStyle(older ? .white.opacity(0.8) : .white.opacity(0.2))
+            .help("Older answer (⌃⌥[)")
+
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(vm.viewingPrevious == nil ? .white.opacity(0.45) : .yellow)
+
+            Button { vm.showNewerAnswer() } label: {
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .disabled(vm.viewingPrevious == nil)
+            .foregroundStyle(vm.viewingPrevious == nil ? .white.opacity(0.2) : .white.opacity(0.8))
+            .help("Newer answer (⌃⌥])")
+            Spacer(minLength: 0)
         }
     }
 
