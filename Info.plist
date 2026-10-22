@@ -1,31 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
- "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>
-    <string>InterviewCopilot</string>
-    <key>CFBundleDisplayName</key>
-    <string>Interview Copilot</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.local.interviewcopilot</string>
-    <key>CFBundleVersion</key>
-    <string>2</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.2.0</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleExecutable</key>
-    <string>InterviewCopilot</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Interview Copilot listens to your microphone to transcribe your answers.</string>
-    <key>NSSpeechRecognitionUsageDescription</key>
-    <string>Interview Copilot transcribes speech on-device to suggest answers.</string>
+	<key>CFBundleDisplayName</key>
+	<string>finder</string>
+	<key>CFBundleExecutable</key>
+	<string>finder</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.local.interviewcopilot</string>
+	<key>CFBundleName</key>
+	<string>finder</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.3.0</string>
+	<key>CFBundleVersion</key>
+	<string>3</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs access to the microphone.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>This app transcribes speech on-device.</string>
 </dict>
 </plist>

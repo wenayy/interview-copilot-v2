@@ -87,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appItem = NSMenuItem()
         mainMenu.addItem(appItem)
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "Quit Interview Copilot",
+        appMenu.addItem(withTitle: "Quit finder",
                         action: #selector(NSApplication.terminate(_:)),
                         keyEquivalent: "q")
         appItem.submenu = appMenu
@@ -121,10 +121,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let btn = statusItem.button {
             let img = NSImage(
                 systemSymbolName: "waveform.circle.fill",
-                accessibilityDescription: "Interview Copilot")
+                accessibilityDescription: "finder")
             img?.isTemplate = true
             btn.image = img
-            btn.title = " IC"
+            btn.title = ""
             btn.imagePosition = .imageLeading
         }
 
@@ -144,6 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         add("Get answer now  (⌃⌥A)", #selector(getAnswer))
         add("Answer from screen  (⌃⌥S)", #selector(answerScreen))
+        add("Add screenshot to queue  (⌃⌥1)", #selector(queueScreenshot))
+        add("Answer from queued screenshots  (⌃⌥2)", #selector(answerQueue))
         add("Scrolling screenshot  (⌃⌥L)", #selector(scrollScreenshot))
         menu.addItem(.separator())
         add("New session  (clear memory + transcript)", #selector(newSession))
@@ -154,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Open settings…", #selector(openSettings), ",")
         menu.addItem(.separator())
         add("Relaunch app  (after granting permissions)", #selector(relaunch))
-        add("Quit Interview Copilot", #selector(quit), "q")
+        add("Quit finder", #selector(quit), "q")
         statusItem.menu = menu
     }
 
@@ -167,6 +169,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func hideOverlay() { panel.orderOut(nil) }
     @objc private func getAnswer() { vm.requestSuggestion() }
     @objc private func answerScreen() { vm.answerFromScreen() }
+    @objc private func queueScreenshot() { vm.addScreenToQueue() }
+    @objc private func answerQueue() { vm.answerFromQueue() }
     @objc private func scrollScreenshot() { vm.toggleScrollCapture() }
     @objc private func newSession() { vm.newSession() }
 
@@ -177,6 +181,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hk.register(keyCode: Shortcuts.screen.keyCode) { [weak self] in
             self?.vm.answerFromScreen()
+        }
+        hk.register(keyCode: Shortcuts.queueShot.keyCode) { [weak self] in
+            self?.vm.addScreenToQueue()
+        }
+        hk.register(keyCode: Shortcuts.answerQueue.keyCode) { [weak self] in
+            self?.vm.answerFromQueue()
+        }
+        hk.register(keyCode: Shortcuts.clearQueue.keyCode) { [weak self] in
+            self?.vm.clearScreenQueue()
         }
         hk.register(keyCode: Shortcuts.scroll.keyCode) { [weak self] in
             self?.vm.toggleScrollCapture()
@@ -237,7 +250,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 contentRect: NSRect(x: 0, y: 0, width: 440, height: 440),
                 styleMask: [.titled, .closable],
                 backing: .buffered, defer: false)
-            window.title = "Interview Copilot Settings"
+            window.title = "Settings"
             window.contentView = NSHostingView(rootView: view)
             window.isReleasedWhenClosed = false
             window.sharingType = .none   // hide Settings from screen share too

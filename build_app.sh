@@ -5,7 +5,7 @@
 set -euo pipefail
 
 CONFIG="${1:-release}"
-APP="InterviewCopilot.app"
+APP="finder.app"
 
 if [ "${UNIVERSAL:-0}" = "1" ]; then
     # Apple Silicon + Intel in one binary (for release downloads). Each arch is
@@ -26,7 +26,7 @@ fi
 echo "▶ Assembling ${APP} …"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/InterviewCopilot"
+cp "$BIN" "$APP/Contents/MacOS/finder"
 cp Info.plist "$APP/Contents/Info.plist"
 
 # App icon: if AppIcon.png (a square 1024x1024 PNG) exists at the repo root,
@@ -77,7 +77,7 @@ echo
 echo "Run it with your API key:"
 echo "    ANTHROPIC_API_KEY=sk-ant-... open $APP"
 echo "or launch the binary directly to keep the env var:"
-echo "    ANTHROPIC_API_KEY=sk-ant-... ./$APP/Contents/MacOS/InterviewCopilot"
+echo "    ANTHROPIC_API_KEY=sk-ant-... ./$APP/Contents/MacOS/finder"
 echo
 echo "First launch: grant Microphone and Screen Recording in"
 echo "System Settings › Privacy & Security, then relaunch."

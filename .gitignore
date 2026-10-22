@@ -1,6 +1,7 @@
 .build/
 .swiftpm/
 InterviewCopilot.app/
+finder.app/
 dist/
 .claude/
 .DS_Store
