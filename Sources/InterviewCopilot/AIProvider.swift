@@ -73,15 +73,25 @@ enum AnswerStyle: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// How a request's screenshots were taken — decides how the prompt tells the
+/// model to read several of them.
+enum CaptureKind: Sendable {
+    case screen   // one full-screen grab (or none)
+    case scroll   // ordered, overlapping frames of one scrolled region
+    case batch    // separate screenshots queued one by one (⌃⌥1)
+}
+
 protocol AIProvider: Sendable {
     /// Stream a suggested answer — to `question` if given, otherwise to the
     /// interviewer's most recent question in the session timeline — given the
-    /// session memory, optional on-screen images (one screen
-    /// grab, or the ordered frames of a scrolling screenshot), and answer style.
+    /// session memory, optional on-screen images (one screen grab, the ordered
+    /// frames of a scrolling screenshot, or a queued batch — see
+    /// `captureKind`), and answer style.
     func streamSuggestion(
         question: String?,
         jobContext: String,
         screenshots: [Data],
+        captureKind: CaptureKind,
         memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool
@@ -157,12 +167,23 @@ struct CopilotPrompt: Sendable {
 }
 
 func copilotUserPrompt(question: String?, style: AnswerStyle, screenshotCount: Int,
+                       captureKind: CaptureKind,
                        memory: SessionMemory) -> CopilotPrompt {
     let followUp = "If it follows up on something in the session timeline " +
         "(\"optimize it\", \"that problem\", \"the code\", \"go back to the first " +
         "one\"), build on that context."
     let task: String
-    if screenshotCount > 1 {
+    if screenshotCount > 1 && captureKind == .batch {
+        task = """
+        \(screenshotCount) screenshots of my screen are attached, in the order \
+        I took them. They are SEPARATE captures (e.g. different tabs, pages, or \
+        parts of one problem: statement, examples, constraints, starter code). \
+        Read ALL of them together as one question or task, combining the \
+        information across screenshots, then ANSWER IT. If they clearly show \
+        different questions, answer each in order. Use the session timeline \
+        only as background (e.g. constraints the interviewer added out loud).
+        """
+    } else if screenshotCount > 1 {
         task = """
         \(screenshotCount) screenshots are attached, in order. They are a \
         scrolling capture of ONE region of my screen, top to bottom — together \
@@ -268,6 +289,7 @@ struct AnthropicProvider: AIProvider {
         question: String?,
         jobContext: String,
         screenshots: [Data],
+        captureKind: CaptureKind,
         memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool
@@ -276,7 +298,7 @@ struct AnthropicProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(question: question, jobContext: jobContext,
-                                  screenshots: screenshots, memory: memory, style: style,
+                                  screenshots: screenshots, captureKind: captureKind, memory: memory, style: style,
                                   thinking: thinking, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -290,6 +312,7 @@ struct AnthropicProvider: AIProvider {
         question: String?,
         jobContext: String,
         screenshots: [Data],
+        captureKind: CaptureKind,
         memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool,
@@ -304,7 +327,7 @@ struct AnthropicProvider: AIProvider {
 
         let system = copilotSystemPrompt(jobContext: jobContext)
         let prompt = copilotUserPrompt(question: question, style: style,
-                                       screenshotCount: screenshots.count,
+                                       screenshotCount: screenshots.count, captureKind: captureKind,
                                        memory: memory)
 
         // History first and cached: the timeline only grows, so each follow-up
@@ -417,6 +440,7 @@ struct OpenAIProvider: AIProvider {
         question: String?,
         jobContext: String,
         screenshots: [Data],
+        captureKind: CaptureKind,
         memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool
@@ -425,7 +449,7 @@ struct OpenAIProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(question: question, jobContext: jobContext,
-                                  screenshots: screenshots, memory: memory, style: style,
+                                  screenshots: screenshots, captureKind: captureKind, memory: memory, style: style,
                                   thinking: thinking, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -448,6 +472,7 @@ struct OpenAIProvider: AIProvider {
         question: String?,
         jobContext: String,
         screenshots: [Data],
+        captureKind: CaptureKind,
         memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool,
@@ -464,7 +489,7 @@ struct OpenAIProvider: AIProvider {
         // reasoning). Newer models only accept the default temperature, so we
         // don't send one.
         var userContent: [[String: Any]] =
-            [["type": "text", "text": copilotUserPrompt(question: question, style: style, screenshotCount: screenshots.count, memory: memory).text]]
+            [["type": "text", "text": copilotUserPrompt(question: question, style: style, screenshotCount: screenshots.count, captureKind: captureKind, memory: memory).text]]
         for shot in screenshots {
             userContent.append(["type": "image_url", "image_url":
                 ["url": "data:image/png;base64,\(shot.base64EncodedString())"]])
@@ -542,6 +567,120 @@ struct OpenAIProvider: AIProvider {
 
 /// Talks to the DeepSeek API (OpenAI-compatible) with streaming.
 /// Very cheap and fast — key from platform.deepseek.com.
+/// Any endpoint that speaks the OpenAI Chat Completions streaming format.
+/// Powers xAI's Grok (`https://api.x.ai/v1/...`, Bearer key) and a local
+/// Ollama server (`http://localhost:11434/v1/...`, no key). Screenshots are
+/// sent as `image_url` data URLs — read by multimodal models (grok-4, llava,
+/// llama3.2-vision) and ignored by text-only ones.
+struct OpenAICompatibleProvider: AIProvider {
+    let providerName: String
+    let endpoint: URL
+    let apiKey: String        // empty = no Authorization header
+    let model: String
+
+    func streamSuggestion(
+        question: String?,
+        jobContext: String,
+        screenshots: [Data],
+        captureKind: CaptureKind,
+        memory: SessionMemory,
+        style: AnswerStyle,
+        thinking: Bool
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    try await run(question: question, jobContext: jobContext,
+                                  screenshots: screenshots, captureKind: captureKind,
+                                  memory: memory, style: style, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func run(
+        question: String?,
+        jobContext: String,
+        screenshots: [Data],
+        captureKind: CaptureKind,
+        memory: SessionMemory,
+        style: AnswerStyle,
+        continuation: AsyncThrowingStream<String, Error>.Continuation
+    ) async throws {
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !key.isEmpty {
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
+
+        var userContent: [[String: Any]] =
+            [["type": "text", "text": copilotUserPrompt(question: question, style: style,
+                screenshotCount: screenshots.count, captureKind: captureKind, memory: memory).text]]
+        for shot in screenshots {
+            userContent.append(["type": "image_url", "image_url":
+                ["url": "data:image/png;base64,\(shot.base64EncodedString())"]])
+        }
+
+        let body: [String: Any] = [
+            "model": model,
+            "stream": true,
+            "messages": [
+                ["role": "system",
+                 "content": copilotSystemPrompt(jobContext: jobContext)],
+                ["role": "user", "content": userContent]
+            ]
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (bytes, response): (URLSession.AsyncBytes, URLResponse)
+        do {
+            (bytes, response) = try await URLSession.shared.bytes(for: request)
+        } catch {
+            // The most common Ollama failure is "server not running".
+            throw NSError(domain: providerName, code: -2, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Couldn't reach \(providerName) at \(endpoint.host ?? "host"). " +
+                    "\(error.localizedDescription)"])
+        }
+        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+            var detail = ""
+            for try await line in bytes.lines { detail += line }
+            throw NSError(
+                domain: providerName, code: http.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(detail)"])
+        }
+
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst("data:".count)
+                .trimmingCharacters(in: .whitespaces)
+            if payload == "[DONE]" { continuation.finish(); return }
+            guard let data = payload.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data)
+                    as? [String: Any]
+            else { continue }
+
+            if let choices = obj["choices"] as? [[String: Any]],
+               let delta = choices.first?["delta"] as? [String: Any],
+               let text = delta["content"] as? String {
+                continuation.yield(text)
+            }
+            if let err = obj["error"] as? [String: Any] {
+                let msg = err["message"] as? String ?? "unknown error"
+                throw NSError(domain: providerName, code: -1,
+                              userInfo: [NSLocalizedDescriptionKey: msg])
+            }
+        }
+        continuation.finish()
+    }
+}
+
 struct DeepSeekProvider: AIProvider {
     var apiKey: String
     var model: String = "deepseek-v4-flash"
@@ -552,6 +691,7 @@ struct DeepSeekProvider: AIProvider {
         question: String?,
         jobContext: String,
         screenshots: [Data],
+        captureKind: CaptureKind,
         memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool
@@ -561,7 +701,7 @@ struct DeepSeekProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(question: question, jobContext: jobContext,
-                                  screenshots: screenshots, memory: memory, style: style,
+                                  screenshots: screenshots, captureKind: captureKind, memory: memory, style: style,
                                   thinking: think, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -575,6 +715,7 @@ struct DeepSeekProvider: AIProvider {
         question: String?,
         jobContext: String,
         screenshots: [Data],
+        captureKind: CaptureKind,
         memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool,
@@ -587,7 +728,7 @@ struct DeepSeekProvider: AIProvider {
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
 
         var userContent: [[String: Any]] =
-            [["type": "text", "text": copilotUserPrompt(question: question, style: style, screenshotCount: screenshots.count, memory: memory).text]]
+            [["type": "text", "text": copilotUserPrompt(question: question, style: style, screenshotCount: screenshots.count, captureKind: captureKind, memory: memory).text]]
         for shot in screenshots {
             userContent.append(["type": "image_url", "image_url":
                 ["url": "data:image/png;base64,\(shot.base64EncodedString())"]])
@@ -656,6 +797,7 @@ struct GeminiProvider: AIProvider {
         question: String?,
         jobContext: String,
         screenshots: [Data],
+        captureKind: CaptureKind,
         memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool
@@ -664,7 +806,7 @@ struct GeminiProvider: AIProvider {
             let task = Task {
                 do {
                     try await run(question: question, jobContext: jobContext,
-                                  screenshots: screenshots, memory: memory, style: style,
+                                  screenshots: screenshots, captureKind: captureKind, memory: memory, style: style,
                                   continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
@@ -678,6 +820,7 @@ struct GeminiProvider: AIProvider {
         question: String?,
         jobContext: String,
         screenshots: [Data],
+        captureKind: CaptureKind,
         memory: SessionMemory,
         style: AnswerStyle,
         continuation: AsyncThrowingStream<String, Error>.Continuation
@@ -695,7 +838,7 @@ struct GeminiProvider: AIProvider {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         var parts: [[String: Any]] =
-            [["text": copilotUserPrompt(question: question, style: style, screenshotCount: screenshots.count, memory: memory).text]]
+            [["text": copilotUserPrompt(question: question, style: style, screenshotCount: screenshots.count, captureKind: captureKind, memory: memory).text]]
         for shot in screenshots {
             parts.append(["inline_data":
                 ["mime_type": "image/png", "data": shot.base64EncodedString()]])
@@ -762,6 +905,7 @@ struct EchoProvider: AIProvider {
         question: String?,
         jobContext: String,
         screenshots: [Data],
+        captureKind: CaptureKind,
         memory: SessionMemory,
         style: AnswerStyle,
         thinking: Bool

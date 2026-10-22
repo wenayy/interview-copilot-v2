@@ -7,7 +7,7 @@ import Foundation
 @MainActor
 final class AppSettings: ObservableObject {
     enum ProviderKind: String, CaseIterable, Identifiable {
-        case openai, anthropic, gemini, deepseek
+        case openai, anthropic, gemini, deepseek, grok, ollama
         var id: String { rawValue }
         var label: String {
             switch self {
@@ -15,6 +15,8 @@ final class AppSettings: ObservableObject {
             case .anthropic: return "Anthropic"
             case .gemini: return "Gemini"
             case .deepseek: return "DeepSeek"
+            case .grok: return "Grok"
+            case .ollama: return "Ollama"
             }
         }
         var defaultModel: String {
@@ -23,8 +25,12 @@ final class AppSettings: ObservableObject {
             case .anthropic: return "claude-sonnet-4-6"
             case .gemini: return "gemini-2.0-flash"
             case .deepseek: return "deepseek-v4-flash"
+            case .grok: return "grok-4"
+            case .ollama: return "llama3.2"
             }
         }
+        /// Ollama runs locally and needs no API key; everything else does.
+        var requiresKey: Bool { self != .ollama }
     }
 
     /// Which AI reads Screen / Scroll captures. DeepSeek can't read images, so
@@ -82,6 +88,19 @@ final class AppSettings: ObservableObject {
     @Published var deepseekModel: String {
         didSet { d.set(deepseekModel, forKey: "deepseekModel") }
     }
+    @Published var grokKey: String {
+        didSet { d.set(grokKey, forKey: "grokKey") }
+    }
+    @Published var grokModel: String {
+        didSet { d.set(grokModel, forKey: "grokModel") }
+    }
+    @Published var ollamaModel: String {
+        didSet { d.set(ollamaModel, forKey: "ollamaModel") }
+    }
+    /// Base URL of the local (or remote) Ollama server.
+    @Published var ollamaHost: String {
+        didSet { d.set(ollamaHost, forKey: "ollamaHost") }
+    }
     @Published var transcription: TranscriptionEngine {
         didSet { d.set(transcription.rawValue, forKey: "transcription") }
     }
@@ -125,6 +144,12 @@ final class AppSettings: ObservableObject {
             ?? ProviderKind.gemini.defaultModel
         deepseekModel = d.string(forKey: "deepseekModel")
             ?? ProviderKind.deepseek.defaultModel
+        grokKey = d.string(forKey: "grokKey")
+            ?? env["XAI_API_KEY"] ?? env["GROK_API_KEY"] ?? ""
+        grokModel = d.string(forKey: "grokModel") ?? ProviderKind.grok.defaultModel
+        ollamaModel = d.string(forKey: "ollamaModel") ?? ProviderKind.ollama.defaultModel
+        ollamaHost = d.string(forKey: "ollamaHost")
+            ?? env["OLLAMA_HOST"] ?? "http://localhost:11434"
 
         let dgKey = d.string(forKey: "deepgramKey") ?? env["DEEPGRAM_API_KEY"] ?? ""
         deepgramKey = dgKey
@@ -152,6 +177,8 @@ final class AppSettings: ObservableObject {
         case .anthropic: raw = anthropicKey
         case .gemini: raw = geminiKey
         case .deepseek: raw = deepseekKey
+        case .grok: raw = grokKey
+        case .ollama: raw = ""   // local server, no key
         }
         // Pasted keys often carry a trailing newline/space; a newline in an HTTP
         // header value makes Foundation drop the header entirely → 401.
@@ -164,9 +191,20 @@ final class AppSettings: ObservableObject {
         case .anthropic: m = anthropicModel
         case .gemini: m = geminiModel
         case .deepseek: m = deepseekModel
+        case .grok: m = grokModel
+        case .ollama: m = ollamaModel
         }
         let trimmed = m.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? kind.defaultModel : trimmed
+    }
+
+    /// Ollama's OpenAI-compatible chat endpoint, derived from `ollamaHost`.
+    var ollamaChatURL: URL {
+        let host = ollamaHost.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
+        let base = host.isEmpty ? "http://localhost:11434" : host
+        return URL(string: "\(base)/v1/chat/completions")
+            ?? URL(string: "http://localhost:11434/v1/chat/completions")!
     }
 }
 
@@ -178,6 +216,8 @@ extension AppSettings.ProviderKind {
         case .anthropic: return "Claude"
         case .gemini: return "Gemini"
         case .deepseek: return "DeepSeek"
+        case .grok: return "Grok"
+        case .ollama: return "Ollama"
         }
     }
 }
@@ -197,7 +237,7 @@ struct SettingsView: View {
                     Text(kind.label).tag(kind)
                 }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
 
             if settings.provider == .openai {
                 field("OpenAI API key", systemImage: "key.fill") {
@@ -230,7 +270,7 @@ struct SettingsView: View {
                 Text("Free key at aistudio.google.com/apikey. " +
                      "Try gemini-2.0-flash or gemini-2.5-flash.")
                     .font(.caption).foregroundStyle(.secondary)
-            } else {
+            } else if settings.provider == .deepseek {
                 field("DeepSeek API key", systemImage: "key.fill") {
                     SecureField("sk-…", text: $settings.deepseekKey)
                 }
@@ -240,6 +280,29 @@ struct SettingsView: View {
                 }
                 Text("Very cheap & fast. Key from platform.deepseek.com. " +
                      "Try deepseek-v4-flash (default) or deepseek-reasoner.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if settings.provider == .grok {
+                field("xAI API key", systemImage: "key.fill") {
+                    SecureField("xai-…", text: $settings.grokKey)
+                }
+                field("Model", systemImage: "cpu") {
+                    TextField(AppSettings.ProviderKind.grok.defaultModel,
+                              text: $settings.grokModel)
+                }
+                Text("OpenAI-compatible. Key from console.x.ai. " +
+                     "Try grok-4 (multimodal, reads screens) or grok-3.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                field("Ollama host", systemImage: "desktopcomputer") {
+                    TextField("http://localhost:11434", text: $settings.ollamaHost)
+                }
+                field("Model", systemImage: "cpu") {
+                    TextField(AppSettings.ProviderKind.ollama.defaultModel,
+                              text: $settings.ollamaModel)
+                }
+                Text("Runs locally — no API key. Install from ollama.com, then " +
+                     "`ollama pull llama3.2`. For Screen/Scroll, pull a vision " +
+                     "model (e.g. llama3.2-vision or llava) and set it here.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 

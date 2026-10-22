@@ -82,6 +82,11 @@ final class CopilotViewModel: ObservableObject {
     @Published var scrollCapturing = false
     @Published var scrollFrames = 0
 
+    /// Screenshots queued with ⌃⌥1 / +Shot, sent together with ⌃⌥2.
+    @Published private(set) var queuedShots: [Data] = []
+    static let maxQueuedShots = 6
+    private var queueCaptureInFlight = false
+
     /// Caps on what memory stores (the prompt applies its own budget).
     private let memoryScreenChars = 12_000
     private let memoryMaxEvents = 3_000
@@ -185,13 +190,24 @@ final class CopilotViewModel: ObservableObject {
 
     private func makeProvider(_ kind: AppSettings.ProviderKind) -> AIProvider? {
         let key = settings.key(for: kind)
-        guard !key.isEmpty else { return nil }
+        // Every provider except local Ollama needs a key.
+        guard !key.isEmpty || !kind.requiresKey else { return nil }
         let model = settings.model(for: kind)
         switch kind {
         case .openai: return OpenAIProvider(apiKey: key, model: model)
         case .anthropic: return AnthropicProvider(apiKey: key, model: model)
         case .gemini: return GeminiProvider(apiKey: key, model: model)
         case .deepseek: return DeepSeekProvider(apiKey: key, model: model)
+        case .grok:
+            return OpenAICompatibleProvider(
+                providerName: "Grok",
+                endpoint: URL(string: "https://api.x.ai/v1/chat/completions")!,
+                apiKey: key, model: model)
+        case .ollama:
+            return OpenAICompatibleProvider(
+                providerName: "Ollama",
+                endpoint: settings.ollamaChatURL,
+                apiKey: "", model: model)
         }
     }
 
@@ -212,7 +228,9 @@ final class CopilotViewModel: ObservableObject {
         status = "Screen / Scroll → \(kind.shortLabel) · \(settings.model(for: kind))"
     }
 
-    func hasKey(_ kind: AppSettings.ProviderKind) -> Bool { !settings.key(for: kind).isEmpty }
+    func hasKey(_ kind: AppSettings.ProviderKind) -> Bool {
+        !kind.requiresKey || !settings.key(for: kind).isEmpty
+    }
     func modelName(_ kind: AppSettings.ProviderKind) -> String { settings.model(for: kind) }
 
     /// What Auto resolves to: the answer provider, or GPT when that's DeepSeek
@@ -343,6 +361,51 @@ final class CopilotViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Screenshot queue
+
+    /// ⌃⌥1 / +Shot: grab the screen into the queue without asking the AI, so
+    /// several screens (problem, examples, constraints, another tab) can be
+    /// answered together with ⌃⌥2.
+    func addScreenToQueue() {
+        guard !queueCaptureInFlight else { return }
+        guard queuedShots.count < Self.maxQueuedShots else {
+            status = "Queue full (\(Self.maxQueuedShots)) — ⌃⌥2 to answer, ⌃⌥3 to clear"
+            return
+        }
+        queueCaptureInFlight = true
+        Task {
+            defer { queueCaptureInFlight = false }
+            do {
+                let png = try await ScreenGrabber.capturePNG()
+                queuedShots.append(png)
+                status = "Queued \(queuedShots.count)/\(Self.maxQueuedShots) " +
+                    "screenshot(s) — ⌃⌥1 add more, ⌃⌥2 answer"
+            } catch {
+                status = "⚠️ Couldn't capture screen: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// ⌃⌥2: answer from every queued screenshot in one request, then empty
+    /// the queue.
+    func answerFromQueue() {
+        guard !queuedShots.isEmpty else {
+            status = "No screenshots queued — ⌃⌥1 adds the current screen"
+            return
+        }
+        let shots = queuedShots
+        queuedShots = []
+        status = "Reading \(shots.count) screenshot(s) — answering…"
+        runSuggestion(screenshots: shots, captureKind: .batch)
+    }
+
+    /// ⌃⌥3: drop the queued screenshots without asking.
+    func clearScreenQueue() {
+        guard !queuedShots.isEmpty else { return }
+        queuedShots = []
+        status = "Screenshot queue cleared"
+    }
+
     // MARK: - Scrolling screenshot
 
     /// ⌃⌥L / the Scroll button: first press picks a region and starts
@@ -384,7 +447,7 @@ final class CopilotViewModel: ObservableObject {
             return
         }
         status = "Read \(frames.count) frame(s) — answering…"
-        runSuggestion(screenshots: frames)
+        runSuggestion(screenshots: frames, captureKind: .scroll)
     }
 
     func cancelScrollCapture() {
@@ -394,15 +457,15 @@ final class CopilotViewModel: ObservableObject {
         status = runningStatus()
     }
 
-    private func runSuggestion(screenshots: [Data]) {
+    private func runSuggestion(screenshots: [Data], captureKind: CaptureKind = .screen) {
         suggestionTask?.cancel()
         startNewAnswer()
         suggestionTask = Task { [weak self] in
-            await self?.stream(screenshots: screenshots)
+            await self?.stream(screenshots: screenshots, captureKind: captureKind)
         }
     }
 
-    private func stream(screenshots: [Data]) async {
+    private func stream(screenshots: [Data], captureKind: CaptureKind = .screen) async {
         if !memory.hasInterviewerSpeech && screenshots.isEmpty {
             suggestion = "No question captured yet. Start listening and wait " +
                 "for cyan Q: lines to appear, or use Screen for an " +
@@ -450,7 +513,8 @@ final class CopilotViewModel: ObservableObject {
         do {
             for try await delta in activeProvider.streamSuggestion(
                 question: nil, jobContext: ctx,
-                screenshots: screenshots, memory: mem, style: style, thinking: think) {
+                screenshots: screenshots, captureKind: captureKind, memory: mem,
+                style: style, thinking: think) {
                 if Task.isCancelled { return }
                 waitingForAnswer = false
                 suggestion += delta
@@ -551,7 +615,7 @@ final class CopilotViewModel: ObservableObject {
             do {
                 for try await delta in self.provider.streamSuggestion(
                     question: question, jobContext: ctx, screenshots: [],
-                    memory: mem, style: style, thinking: think) {
+                    captureKind: .screen, memory: mem, style: style, thinking: think) {
                     if Task.isCancelled { return }
                     self.waitingForAnswer = false
                     self.suggestion += delta
@@ -571,6 +635,7 @@ final class CopilotViewModel: ObservableObject {
     func newSession() {
         suggestionTask?.cancel()          // an in-flight answer won't be saved
         if scrollCapturing { cancelScrollCapture() }
+        queuedShots = []
         memory = SessionMemory()
         transcript = []
         liveInterviewer = ""

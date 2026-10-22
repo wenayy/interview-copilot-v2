@@ -63,9 +63,13 @@ struct Shortcut {
 }
 
 enum Shortcuts {
-    // keyCodes: A=0, S=1, H=4, M=46, R=15, Q=12, C=8, L=37, [=33, ]=30
+    // keyCodes: A=0, S=1, H=4, M=46, R=15, Q=12, C=8, L=37, [=33, ]=30,
+    // 1=18, 2=19, 3=20
     static let answer = Shortcut(label: "Answer (spoken question)", keys: "⌃⌥A", keyCode: 0)
     static let screen = Shortcut(label: "Answer from screen", keys: "⌃⌥S", keyCode: 1)
+    static let queueShot = Shortcut(label: "Add screenshot to queue", keys: "⌃⌥1", keyCode: 18)
+    static let answerQueue = Shortcut(label: "Answer from queued screenshots", keys: "⌃⌥2", keyCode: 19)
+    static let clearQueue = Shortcut(label: "Clear screenshot queue", keys: "⌃⌥3", keyCode: 20)
     static let overlay = Shortcut(label: "Show / hide overlay", keys: "⌃⌥H", keyCode: 4)
     static let mic = Shortcut(label: "Toggle mic listening", keys: "⌃⌥M", keyCode: 46)
     static let resume = Shortcut(label: "Toggle résumé use", keys: "⌃⌥R", keyCode: 15)
@@ -77,6 +81,7 @@ enum Shortcuts {
     static let olderAnswer = Shortcut(label: "Previous answer", keys: "⌃⌥[", keyCode: 33)
     static let newerAnswer = Shortcut(label: "Next answer (back to latest)", keys: "⌃⌥]", keyCode: 30)
 
-    static let all = [answer, screen, scroll, overlay, mic, resume, askLast, compact,
+    static let all = [answer, screen, queueShot, answerQueue, clearQueue, scroll,
+                      overlay, mic, resume, askLast, compact,
                       olderAnswer, newerAnswer]
 }

@@ -16,6 +16,10 @@ struct ContentView: View {
                 scrollCaptureBar
             }
 
+            if !vm.queuedShots.isEmpty {
+                shotQueueBar
+            }
+
             if showKeys {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(Shortcuts.all, id: \.keys) { s in
@@ -244,6 +248,12 @@ struct ContentView: View {
                          help: "Answer what's on screen (⌃⌥S)") {
                 vm.answerFromScreen()
             }
+            actionButton(vm.queuedShots.isEmpty ? "+Shot" : "+Shot \(vm.queuedShots.count)",
+                         systemImage: "plus.viewfinder", .yellow,
+                         help: "Add the screen to a queue without answering (⌃⌥1); " +
+                               "answer from all queued shots with ⌃⌥2") {
+                vm.addScreenToQueue()
+            }
             actionButton(vm.scrollCapturing ? "Done" : "Scroll",
                          systemImage: "scroll", .pink,
                          help: "Scrolling screenshot: select a region, scroll " +
@@ -300,6 +310,31 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         .help(help)
+    }
+
+    private var shotQueueBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "photo.stack")
+                .font(.system(size: 10))
+                .foregroundStyle(.yellow)
+            Text("\(vm.queuedShots.count)/\(CopilotViewModel.maxQueuedShots) screenshots queued")
+                .font(.system(size: 11, weight: .semibold))
+            Text("⌃⌥1 add · ⌃⌥2 answer")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.5))
+            Spacer()
+            Button("Clear") { vm.clearScreenQueue() }
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.7))
+            Button("Answer") { vm.answerFromQueue() }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.yellow)
+        }
+        .padding(6)
+        .background(Color.yellow.opacity(0.12))
+        .cornerRadius(6)
     }
 
     private var scrollCaptureBar: some View {

@@ -33,8 +33,9 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
 
 - **Real-time transcription** of the interviewer (system/call audio) and you (mic)
   — works with headphones.
-- **AI answers** streamed live, from **OpenAI, Anthropic (Claude), or Google Gemini**
-  — your key, your model.
+- **AI answers** streamed live, from **OpenAI, Anthropic (Claude), Google Gemini,
+  DeepSeek, Grok (xAI), or a local Ollama model** — your key, your model.
+  Ollama runs fully offline with no API key.
 - **Answer styles**: Concise · Detailed · STAR (behavioral) · Code (with complexity).
 - **Think** — deeper reasoning before answering (GPT-5.x reasoning effort,
   Claude effort/adaptive thinking, DeepSeek thinking mode). On = more accurate
@@ -53,6 +54,9 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
 - **Scrolling screenshot** — select a region, scroll through it, and the AI
   answers from the whole thing (long problems, docs, or code that doesn't fit
   on one screen).
+- **Multi-screenshot queue** — press **⌃⌥1** (or **+Shot**) on each screen you
+  need (problem, examples, constraints, another tab), then **⌃⌥2** to answer
+  from all of them in one go (up to 6). **⌃⌥3** clears the queue.
 - **Session memory** — remembers the whole meeting: everything the interviewer
   and you said (even with Auto off), every screen capture (text read
   on-device), typed questions, and every answer. Follow-ups like "optimize it"
@@ -78,9 +82,11 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
 
 - A **Mac** running **macOS 14 (Sonoma) or newer**.
 - **API keys** (bring your own — the app has no backend/billing):
-  - One LLM key: **OpenAI**, **Anthropic**, **DeepSeek**, or **Google Gemini** (Gemini has a free tier).
-    DeepSeek can't read images, so Screen/Scroll captures need an OpenAI,
-    Anthropic, or Gemini key too.
+  - One LLM key: **OpenAI**, **Anthropic**, **DeepSeek**, **Google Gemini** (free tier),
+    or **Grok (xAI)** — or run **Ollama** locally with no key at all.
+    DeepSeek and most local models can't read images, so Screen/Scroll captures
+    need a vision-capable model (OpenAI, Anthropic, Gemini, Grok, or an Ollama
+    vision model like llama3.2-vision).
   - *Optional but recommended:* a **Deepgram** key for accurate transcription
     (Apple's built-in engine works without it).
 
@@ -197,6 +203,9 @@ Great for keeping the overlay small and out of the way during a live interview.
 |---|---|
 | **⌃⌥A** | Answer the spoken question |
 | **⌃⌥S** | Answer from the screen |
+| **⌃⌥1** | Add the screen to the screenshot queue |
+| **⌃⌥2** | Answer from all queued screenshots |
+| **⌃⌥3** | Clear the screenshot queue |
 | **⌃⌥L** | Scrolling screenshot — start, then press again to send |
 | **⌃⌥H** | Show / hide the overlay |
 | **⌃⌥M** | Toggle mic listening |
