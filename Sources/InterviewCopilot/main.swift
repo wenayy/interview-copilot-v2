@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 // MARK: - Hidden overlay panel
@@ -55,12 +56,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var settingsWindow: NSWindow?
     let settings = AppSettings()
     lazy var vm = CopilotViewModel(settings: settings)
+    /// Panel frame from before Mini mode, restored when going back to Full.
+    private var fullFrame: NSRect?
+    private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let host = NSHostingView(rootView: ContentView(vm: vm))
         panel = OverlayPanel(rootView: host)
         panel.center()
         panel.makeKeyAndOrderFront(nil)
+
+        // Resize the panel itself for Mini / Full, so Mini is actually small
+        // instead of the same window with less in it.
+        vm.$compactMode
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] compact in
+                // Published fires before the view updates; resize after the
+                // new layout (and its minimum size) is in place.
+                DispatchQueue.main.async { self?.applyCompact(compact) }
+            }
+            .store(in: &cancellables)
 
         setupMainMenu()   // enables ⌘X/⌘C/⌘V/⌘A in text fields
         setupMenuBar()
@@ -69,6 +85,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.setActivationPolicy(.accessory) // no Dock icon; menu-bar app
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Shrink to a small Mini frame, or restore the Full frame, keeping the
+    /// panel's top edge where it is.
+    private func applyCompact(_ compact: Bool) {
+        guard let panel else { return }
+        var frame = panel.frame
+        let size: NSSize
+        if compact {
+            fullFrame = frame
+            size = NSSize(width: min(frame.width, 380), height: 230)
+        } else {
+            size = fullFrame?.size ?? NSSize(width: 380, height: 470)
+        }
+        frame.origin.y += frame.height - size.height
+        frame.size = size
+        panel.setFrame(frame, display: true, animate: true)
+    }
+
+    /// Mini mode isn't remembered across launches, so save the Full frame.
+    func applicationWillTerminate(_ notification: Notification) {
+        if vm.compactMode, let fullFrame, let panel {
+            var frame = panel.frame
+            frame.origin.y += frame.height - fullFrame.height
+            frame.size = fullFrame.size
+            panel.setFrame(frame, display: false)
+        }
     }
 
     // App keeps running in the menu bar after the overlay is closed.

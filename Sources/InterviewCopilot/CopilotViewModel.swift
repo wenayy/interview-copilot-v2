@@ -549,8 +549,11 @@ final class CopilotViewModel: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         if let text = Self.extractText(from: url), !text.isEmpty {
             profile = text
+            // Loading a résumé means you want it used; with the toggle off it
+            // would be silently left out of every request.
+            useResume = true
             status = "Loaded résumé from \(url.lastPathComponent) " +
-                "(\(text.count) chars)"
+                "(\(text.count) chars) — Résumé on"
         } else {
             status = "Couldn't read text from \(url.lastPathComponent)."
         }

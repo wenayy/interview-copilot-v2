@@ -10,7 +10,11 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
-            controls
+            // Mini mode keeps only status, answer and the ask bar; every
+            // control stays reachable through its hotkey.
+            if !vm.compactMode {
+                controls
+            }
 
             if vm.scrollCapturing {
                 scrollCaptureBar
@@ -20,7 +24,7 @@ struct ContentView: View {
                 shotQueueBar
             }
 
-            if showKeys {
+            if showKeys && !vm.compactMode {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(Shortcuts.all, id: \.keys) { s in
                         HStack(spacing: 8) {
@@ -40,7 +44,7 @@ struct ContentView: View {
                 .cornerRadius(6)
             }
 
-            if showContext {
+            if showContext && !vm.compactMode {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("JOB / ROLE NOTES")
                         .font(.system(size: 9, weight: .bold))
@@ -98,7 +102,8 @@ struct ContentView: View {
             askQuestionBar
         }
         .padding(12)
-        .frame(minWidth: 360, minHeight: vm.compactMode ? 220 : 340)
+        .frame(minWidth: vm.compactMode ? 300 : 360,
+               minHeight: vm.compactMode ? 160 : 340)
         .background(Color.black.opacity(vm.overlayOpacity))
         .foregroundStyle(.white)
     }
@@ -132,15 +137,17 @@ struct ContentView: View {
             Slider(value: $vm.overlayOpacity, in: 0.15...1.0, step: 0.05)
                 .frame(width: 50)
                 .help("Overlay opacity — slide left to see through")
-            Button(showKeys ? "⌨︎✕" : "⌨︎") { showKeys.toggle() }
-                .buttonStyle(.plain)
-                .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.7))
-                .help("Show keyboard shortcuts")
-            Button(showContext ? "Hide ctx" : "Context") { showContext.toggle() }
-                .buttonStyle(.plain)
-                .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.7))
+            if !vm.compactMode {
+                Button(showKeys ? "⌨︎✕" : "⌨︎") { showKeys.toggle() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .help("Show keyboard shortcuts")
+                Button(showContext ? "Hide ctx" : "Context") { showContext.toggle() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
             Button(vm.isRunning ? "Stop" : "Start") { vm.toggle() }
                 .buttonStyle(.plain)
                 .font(.system(size: 11, weight: .semibold))
