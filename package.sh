@@ -5,7 +5,7 @@
 #   gh release create vX.Y.Z dist/InterviewCopilot-macOS.zip
 set -euo pipefail
 
-UNIVERSAL=1 ./build_app.sh release
+UNIVERSAL=1 KEEP_LOCAL=1 ./build_app.sh release
 
 mkdir -p dist
 rm -f dist/InterviewCopilot-macOS.zip

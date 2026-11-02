@@ -68,16 +68,25 @@ echo "✅ Built $APP"
 
 # Keep the installed copy in /Applications up to date so the user can launch
 # from Spotlight/Launchpad (no terminal) and permissions persist (same cert).
+INSTALLED=0
 if [ -d "/Applications/$APP" ] || [ "${INSTALL:-1}" = "1" ]; then
     rm -rf "/Applications/$APP"
     cp -R "$APP" "/Applications/"
+    INSTALLED=1
     echo "📦 Installed to /Applications/$APP"
+    # Remove the repo-local copy so Spotlight/Launchpad don't show two apps
+    # with the same name. package.sh needs it, so it sets KEEP_LOCAL=1.
+    if [ "${KEEP_LOCAL:-0}" != "1" ]; then
+        rm -rf "$APP"
+    fi
 fi
 echo
+RUN_APP="$APP"
+[ "$INSTALLED" = "1" ] && [ "${KEEP_LOCAL:-0}" != "1" ] && RUN_APP="/Applications/$APP"
 echo "Run it with your API key:"
-echo "    ANTHROPIC_API_KEY=sk-ant-... open $APP"
+echo "    ANTHROPIC_API_KEY=sk-ant-... open $RUN_APP"
 echo "or launch the binary directly to keep the env var:"
-echo "    ANTHROPIC_API_KEY=sk-ant-... ./$APP/Contents/MacOS/finder"
+echo "    ANTHROPIC_API_KEY=sk-ant-... $RUN_APP/Contents/MacOS/finder"
 echo
 echo "First launch: grant Microphone and Screen Recording in"
 echo "System Settings › Privacy & Security, then relaunch."
