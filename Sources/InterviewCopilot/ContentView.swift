@@ -8,11 +8,22 @@ struct ContentView: View {
     @State private var confirmNewSession = false
 
     var body: some View {
+        // The answer is what you read, so it keeps its space as the window
+        // shrinks: a short window drops the transcript first, then the
+        // controls (Mini forces that). Every control stays on its hotkey.
+        GeometryReader { geo in
+            content(showControls: !vm.compactMode && geo.size.height >= 300,
+                    showTranscript: !vm.compactMode && geo.size.height >= 460)
+        }
+        .frame(minWidth: vm.compactMode ? 300 : 360, minHeight: 160)
+        .background(Color.black.opacity(vm.overlayOpacity))
+        .foregroundStyle(.white)
+    }
+
+    private func content(showControls: Bool, showTranscript: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            header
-            // Mini mode keeps only status, answer and the ask bar; every
-            // control stays reachable through its hotkey.
-            if !vm.compactMode {
+            header(compact: !showControls)
+            if showControls {
                 controls
             }
 
@@ -24,7 +35,7 @@ struct ContentView: View {
                 shotQueueBar
             }
 
-            if showKeys && !vm.compactMode {
+            if showKeys && showControls {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(Shortcuts.all, id: \.keys) { s in
                         HStack(spacing: 8) {
@@ -44,7 +55,7 @@ struct ContentView: View {
                 .cornerRadius(6)
             }
 
-            if showContext && !vm.compactMode {
+            if showContext && showControls {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("JOB / ROLE NOTES")
                         .font(.system(size: 9, weight: .bold))
@@ -70,8 +81,8 @@ struct ContentView: View {
                 }
             }
 
-            // Live transcript tail — hidden in compact mode
-            if !vm.compactMode {
+            // Live transcript tail — hidden in compact mode / short windows
+            if showTranscript {
                 transcriptView
                 Divider().overlay(.white.opacity(0.15))
             }
@@ -96,19 +107,16 @@ struct ContentView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: .infinity)
+            .frame(minHeight: 60, maxHeight: .infinity)
+            .layoutPriority(1)
 
             Divider().overlay(.white.opacity(0.15))
             askQuestionBar
         }
         .padding(12)
-        .frame(minWidth: vm.compactMode ? 300 : 360,
-               minHeight: vm.compactMode ? 160 : 340)
-        .background(Color.black.opacity(vm.overlayOpacity))
-        .foregroundStyle(.white)
     }
 
-    private var header: some View {
+    private func header(compact: Bool) -> some View {
         HStack(spacing: 8) {
             Circle()
                 .fill(vm.isRunning ? Color.green : Color.gray)
@@ -137,7 +145,7 @@ struct ContentView: View {
             Slider(value: $vm.overlayOpacity, in: 0.15...1.0, step: 0.05)
                 .frame(width: 50)
                 .help("Overlay opacity — slide left to see through")
-            if !vm.compactMode {
+            if !compact {
                 Button(showKeys ? "⌨︎✕" : "⌨︎") { showKeys.toggle() }
                     .buttonStyle(.plain)
                     .font(.system(size: 11))
