@@ -332,7 +332,7 @@ struct ContentView: View {
             Image(systemName: "photo.stack")
                 .font(.system(size: 10))
                 .foregroundStyle(.yellow)
-            Text("\(vm.queuedShots.count)/\(CopilotViewModel.maxQueuedShots) screenshots queued")
+            Text("\(vm.queuedShots.count) screenshots queued · \(vm.queueFullPercent)% full")
                 .font(.system(size: 11, weight: .semibold))
             Text("⌃⌥1 add · ⌃⌥2 answer")
                 .font(.system(size: 10))
@@ -355,7 +355,7 @@ struct ContentView: View {
     private var scrollCaptureBar: some View {
         HStack(spacing: 8) {
             Circle().fill(Color.red).frame(width: 7, height: 7)
-            Text("Capturing · \(vm.scrollFrames)/\(ScrollCaptureSession.maxFrames)")
+            Text("Capturing · \(vm.scrollFrames) frames")
                 .font(.system(size: 11, weight: .semibold))
             Text("scroll slowly, pause briefly")
                 .font(.system(size: 10))

@@ -84,7 +84,6 @@ final class CopilotViewModel: ObservableObject {
 
     /// Screenshots queued with ⌃⌥1 / +Shot, sent together with ⌃⌥2.
     @Published private(set) var queuedShots: [Data] = []
-    static let maxQueuedShots = 6
     private var queueCaptureInFlight = false
 
     /// Caps on what memory stores (the prompt applies its own budget).
@@ -368,8 +367,8 @@ final class CopilotViewModel: ObservableObject {
     /// answered together with ⌃⌥2.
     func addScreenToQueue() {
         guard !queueCaptureInFlight else { return }
-        guard queuedShots.count < Self.maxQueuedShots else {
-            status = "Queue full (\(Self.maxQueuedShots)) — ⌃⌥2 to answer, ⌃⌥3 to clear"
+        guard queuedShots.count < maxImagesPerRequest else {
+            status = "Queue full — ⌃⌥2 to answer, ⌃⌥3 to clear"
             return
         }
         queueCaptureInFlight = true
@@ -377,13 +376,26 @@ final class CopilotViewModel: ObservableObject {
             defer { queueCaptureInFlight = false }
             do {
                 let png = try await ScreenGrabber.capturePNG()
+                // The only limit is what one AI request accepts.
+                guard queuedBytes + png.count <= maxImageBytesPerRequest else {
+                    status = "Queue full (one request can't carry more) — " +
+                        "⌃⌥2 to answer, ⌃⌥3 to clear"
+                    return
+                }
                 queuedShots.append(png)
-                status = "Queued \(queuedShots.count)/\(Self.maxQueuedShots) " +
-                    "screenshot(s) — ⌃⌥1 add more, ⌃⌥2 answer"
+                status = "Queued \(queuedShots.count) screenshot(s) " +
+                    "(\(queueFullPercent)% full) — ⌃⌥1 add more, ⌃⌥2 answer"
             } catch {
                 status = "⚠️ Couldn't capture screen: \(error.localizedDescription)"
             }
         }
+    }
+
+    var queuedBytes: Int { queuedShots.reduce(0) { $0 + $1.count } }
+    /// How close the queue is to the most one request can carry.
+    var queueFullPercent: Int {
+        max(queuedBytes * 100 / maxImageBytesPerRequest,
+            queuedShots.count * 100 / maxImagesPerRequest)
     }
 
     /// ⌃⌥2: answer from every queued screenshot in one request, then empty
@@ -425,7 +437,7 @@ final class CopilotViewModel: ObservableObject {
             let session = ScrollCaptureSession(region: region)
             session.onFrame = { [weak self] n in
                 self?.scrollFrames = n
-                self?.status = "Scroll capture: \(n)/\(ScrollCaptureSession.maxFrames) " +
+                self?.status = "Scroll capture: \(n) frame(s) " +
                     "frames — ⌃⌥L when done"
             }
             session.onAutoFinish = { [weak self] in self?.finishScrollCapture() }

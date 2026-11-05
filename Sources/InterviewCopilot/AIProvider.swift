@@ -73,6 +73,12 @@ enum AnswerStyle: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Most screenshot data one request can carry. Providers reject anything
+/// larger: Gemini caps a whole request at 20 MB, Anthropic at 32 MB and 100
+/// images, and base64 adds a third. 14 MB of PNGs (~19 MB encoded) fits all.
+let maxImageBytesPerRequest = 14_000_000
+let maxImagesPerRequest = 100
+
 /// How a request's screenshots were taken — decides how the prompt tells the
 /// model to read several of them.
 enum CaptureKind: Sendable {

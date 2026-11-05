@@ -131,11 +131,9 @@ private final class RegionSelectView: NSView {
 
 @MainActor
 final class ScrollCaptureSession {
-    /// Hard cap so a forgotten session can't run up a huge vision bill.
-    static let maxFrames = 10
-
     let region: ScreenRegion
     private(set) var frames: [Data] = []
+    private var frameBytes = 0
     var onFrame: (@MainActor (Int) -> Void)?
     var onAutoFinish: (@MainActor () -> Void)?
 
@@ -160,13 +158,16 @@ final class ScrollCaptureSession {
                     let isNew = lastKept.map {
                         ScreenGrabber.difference($0, shot.fingerprint) > 4 } ?? true
                     if lastKept == nil || (settled && isNew) {
-                        frames.append(shot.png)
-                        lastKept = shot.fingerprint
-                        onFrame?(frames.count)
-                        if frames.count >= Self.maxFrames {
+                        // Stop at the most one AI request can carry.
+                        if frames.count >= maxImagesPerRequest ||
+                           frameBytes + shot.png.count > maxImageBytesPerRequest {
                             onAutoFinish?()
                             return
                         }
+                        frames.append(shot.png)
+                        frameBytes += shot.png.count
+                        lastKept = shot.fingerprint
+                        onFrame?(frames.count)
                     }
                     lastSeen = shot.fingerprint
                 }
