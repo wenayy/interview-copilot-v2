@@ -84,7 +84,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let saved = UserDefaults.standard.string(forKey: sizeKey) {
             let size = NSSizeFromString(saved)
             if size.width >= 300, size.height >= 160 {
-                panel.setFrame(NSRect(origin: panel.frame.origin, size: size), display: false)
+                // Keep the restored top-left corner where it was.
+                var frame = panel.frame
+                frame.origin.y += frame.height - size.height
+                frame.size = size
+                panel.setFrame(frame, display: false)
             }
         }
         NotificationCenter.default
@@ -94,7 +98,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 UserDefaults.standard.set(NSStringFromSize(self.panel.frame.size), forKey: sizeKey)
             }
             .store(in: &cancellables)
-        panel.center()
+        // Reopen where it was left (frame autosave restores the position);
+        // center only on first launch, and pull it back on screen if the
+        // display it was on is gone.
+        if UserDefaults.standard.string(forKey: "NSWindow Frame InterviewCopilotOverlay") == nil {
+            panel.center()
+        } else {
+            panel.setFrame(panel.constrainFrameRect(panel.frame, to: panel.screen ?? NSScreen.main),
+                           display: false)
+        }
         panel.ignoresMouseEvents = clickThrough
         panel.makeKeyAndOrderFront(nil)
 
