@@ -56,6 +56,30 @@ final class OverlayPanel: NSPanel {
     override func zoom(_ sender: Any?) {}
     override func toggleFullScreen(_ sender: Any?) {}
 
+    /// While set (⌃⌥P), every frame change keeps this size with the requested
+    /// top edge, so nothing can resize the overlay: not the keyboard, not
+    /// Mini/Full, not SwiftUI content sizing or window tiling. Moving still
+    /// works. Every resize path ends in one of these two setFrame calls.
+    var lockedSize: NSSize?
+
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        super.setFrame(keepingLockedSize(frameRect), display: flag)
+    }
+
+    override func setFrame(_ frameRect: NSRect, display displayFlag: Bool, animate animateFlag: Bool) {
+        super.setFrame(keepingLockedSize(frameRect), display: displayFlag, animate: animateFlag)
+    }
+
+    private func keepingLockedSize(_ rect: NSRect) -> NSRect {
+        guard let size = lockedSize, rect.size != size else { return rect }
+        NSLog("[overlay] size locked: blocked resize %@ -> %@",
+              NSStringFromSize(size), NSStringFromSize(rect.size))
+        var frame = rect
+        frame.origin.y = rect.maxY - size.height
+        frame.size = size
+        return frame
+    }
+
     // Allow a borderless/nonactivating panel to still receive keystrokes.
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -107,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.setFrame(panel.constrainFrameRect(panel.frame, to: panel.screen ?? NSScreen.main),
                            display: false)
         }
+        panel.lockedSize = sizeLocked ? panel.frame.size : nil
         panel.makeKeyAndOrderFront(nil)
 
         // Resize the panel itself for Mini / Full, so Mini is actually small
@@ -138,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sizeLocked = UserDefaults.standard.bool(forKey: "overlaySizeLocked") {
         didSet {
             UserDefaults.standard.set(sizeLocked, forKey: "overlaySizeLocked")
+            panel?.lockedSize = sizeLocked ? panel.frame.size : nil
             vm.status = sizeLocked ? "Size locked (⌃⌥P to unlock)" : "Size unlocked"
         }
     }
