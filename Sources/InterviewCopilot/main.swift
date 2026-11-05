@@ -132,8 +132,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Keyboard move / resize / size lock
 
-    /// Size lock: freezes the overlay's size (⌃⌥⇧ + arrows do nothing) while
-    /// buttons, typing and moving keep working. Remembered across launches.
+    /// Size lock: freezes the overlay's size (⌃⌥⇧ + arrows and Mini/Full
+    /// don't resize it) while buttons, typing and moving keep working.
+    /// Remembered across launches.
     private var sizeLocked = UserDefaults.standard.bool(forKey: "overlaySizeLocked") {
         didSet {
             UserDefaults.standard.set(sizeLocked, forKey: "overlaySizeLocked")
@@ -176,13 +177,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// panel's top edge where it is.
     private func applyCompact(_ compact: Bool) {
         guard let panel else { return }
+        // Size locked: Mini/Full still switch what's shown, but the window
+        // keeps its size. A Mini entered while locked has no Full frame to
+        // restore, so leaving it doesn't resize either.
+        if sizeLocked {
+            if compact { fullFrame = nil }
+            return
+        }
         var frame = panel.frame
         let size: NSSize
         if compact {
             fullFrame = frame
             size = NSSize(width: min(frame.width, 380), height: 230)
         } else {
-            size = fullFrame?.size ?? NSSize(width: 380, height: 470)
+            guard let fullFrame else { return }
+            size = fullFrame.size
         }
         frame.origin.y += frame.height - size.height
         frame.size = size

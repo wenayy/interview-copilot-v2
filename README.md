@@ -214,8 +214,9 @@ button). Use the keyboard instead — it remembers its size and position:
 - **⌃⌥ + arrows** moves it (stays on screen).
 - **⌃⌥⇧ + arrows** resizes it: ← → width, ↑ shorter, ↓ taller.
 - Tap for one step (40 pt); **hold** to keep moving or resizing.
-- **⌃⌥P** **locks the size**: resizing is frozen, while buttons, typing and
-  moving keep working. Press again to unlock. Also in the menu bar menu.
+- **⌃⌥P** **locks the size**: resizing is frozen (⌃⌥⇧ + arrows and Mini/Full
+  keep the window size; Mini still switches to the compact view), while
+  buttons, typing and moving keep working. Press again to unlock. Also in the menu bar menu.
 
 ### Keyboard shortcuts
 
