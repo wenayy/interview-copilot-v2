@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Combine
 import SwiftUI
 
@@ -13,7 +14,10 @@ final class OverlayPanel: NSPanel {
     init(rootView: NSView) {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 380, height: 470),
-            styleMask: [.titled, .closable, .resizable,
+            // Not .resizable: a resizable window's edges switch the cursor to
+            // resize arrows, which shows up on a screen share. Resize with
+            // ⌃⌥⇧ + arrows instead.
+            styleMask: [.titled, .closable,
                         .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false)
@@ -64,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let host = NSHostingView(rootView: ContentView(vm: vm))
         panel = OverlayPanel(rootView: host)
         panel.center()
+        panel.ignoresMouseEvents = clickThrough
         panel.makeKeyAndOrderFront(nil)
 
         // Resize the panel itself for Mini / Full, so Mini is actually small
@@ -85,6 +90,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.setActivationPolicy(.accessory) // no Dock icon; menu-bar app
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: Keyboard move / resize / click-through
+
+    /// Click-through: the mouse passes straight through the overlay to the
+    /// app below, so the cursor never changes over it. Controls stay on
+    /// their hotkeys. Remembered across launches.
+    private var clickThrough = UserDefaults.standard.bool(forKey: "clickThrough") {
+        didSet {
+            UserDefaults.standard.set(clickThrough, forKey: "clickThrough")
+            panel?.ignoresMouseEvents = clickThrough
+            vm.status = clickThrough
+                ? "Click-through on — mouse passes through (⌃⌥T to turn off)"
+                : "Click-through off"
+        }
+    }
+
+    private let keyboardStep: CGFloat = 40
+
+    /// Move the overlay by (dx, dy), kept inside the visible screen area.
+    private func moveOverlay(dx: CGFloat, dy: CGFloat) {
+        guard let panel else { return }
+        var frame = panel.frame
+        frame.origin.x += dx
+        frame.origin.y += dy
+        if let visible = (panel.screen ?? NSScreen.main)?.visibleFrame {
+            frame.origin.x = min(max(frame.origin.x, visible.minX), visible.maxX - frame.width)
+            frame.origin.y = min(max(frame.origin.y, visible.minY), visible.maxY - frame.height)
+        }
+        panel.setFrame(frame, display: true)
+    }
+
+    /// Grow or shrink the overlay, keeping its top edge in place and not
+    /// going below the layout's minimum size.
+    private func resizeOverlay(dw: CGFloat, dh: CGFloat) {
+        guard let panel else { return }
+        var frame = panel.frame
+        let width = max(vm.compactMode ? 300 : 360, frame.width + dw)
+        let height = max(160, frame.height + dh)
+        frame.origin.y += frame.height - height
+        frame.size = NSSize(width: width, height: height)
+        panel.setFrame(frame, display: true)
     }
 
     /// Shrink to a small Mini frame, or restore the Full frame, keeping the
@@ -196,6 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Shortcuts:  ⌃⌥A answer · ⌃⌥S screen", #selector(noop))
         add("           ⌃⌥H hide · ⌃⌥M mic · ⌃⌥R résumé", #selector(noop))
         menu.addItem(.separator())
+        add("Click-through  (⌃⌥T)", #selector(toggleClickThrough))
         add("Open settings…", #selector(openSettings), ",")
         menu.addItem(.separator())
         add("Relaunch app  (after granting permissions)", #selector(relaunch))
@@ -259,7 +307,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hk.register(keyCode: Shortcuts.newerAnswer.keyCode) { [weak self] in
             self?.vm.showNewerAnswer()
         }
+        hk.register(keyCode: Shortcuts.clickThrough.keyCode) { [weak self] in
+            self?.clickThrough.toggle()
+        }
+
+        // Arrows (keyCodes ← 123, → 124, ↓ 125, ↑ 126): ⌃⌥ moves the overlay,
+        // ⌃⌥⇧ resizes it (← → width, ↑ shorter, ↓ taller).
+        let step = keyboardStep
+        let resize = HotKeyCenter.ctrlOpt | UInt32(shiftKey)
+        hk.register(keyCode: 123) { [weak self] in self?.moveOverlay(dx: -step, dy: 0) }
+        hk.register(keyCode: 124) { [weak self] in self?.moveOverlay(dx: step, dy: 0) }
+        hk.register(keyCode: 125) { [weak self] in self?.moveOverlay(dx: 0, dy: -step) }
+        hk.register(keyCode: 126) { [weak self] in self?.moveOverlay(dx: 0, dy: step) }
+        hk.register(keyCode: 123, modifiers: resize) { [weak self] in self?.resizeOverlay(dw: -step, dh: 0) }
+        hk.register(keyCode: 124, modifiers: resize) { [weak self] in self?.resizeOverlay(dw: step, dh: 0) }
+        hk.register(keyCode: 125, modifiers: resize) { [weak self] in self?.resizeOverlay(dw: 0, dh: step) }
+        hk.register(keyCode: 126, modifiers: resize) { [weak self] in self?.resizeOverlay(dw: 0, dh: -step) }
     }
+
+    @objc private func toggleClickThrough() { clickThrough.toggle() }
 
     private func toggleOverlay() {
         if panel.isVisible { panel.orderOut(nil) }
@@ -314,6 +380,7 @@ extension AppDelegate: NSMenuDelegate {
             case #selector(stopListening): item.isEnabled = vm.isRunning
             case #selector(showOverlay): item.isEnabled = !panel.isVisible
             case #selector(hideOverlay): item.isEnabled = panel.isVisible
+            case #selector(toggleClickThrough): item.state = clickThrough ? .on : .off
             default: break
             }
         }

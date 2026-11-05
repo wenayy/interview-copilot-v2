@@ -42,7 +42,7 @@ struct ContentView: View {
                             Text(s.keys)
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundStyle(.cyan)
-                                .frame(width: 44, alignment: .leading)
+                                .frame(width: 84, alignment: .leading)
                             Text(s.label)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.white.opacity(0.85))
