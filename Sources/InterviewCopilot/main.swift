@@ -44,7 +44,17 @@ final class OverlayPanel: NSPanel {
 
         contentView = rootView
         setFrameAutosaveName("InterviewCopilotOverlay")
+
+        // The green zoom button (and double-clicking the title bar) still
+        // resized the window even without .resizable. Hide it and the unused
+        // minimize button; zoom/full screen are blocked below. Close stays.
+        standardWindowButton(.zoomButton)?.isHidden = true
+        standardWindowButton(.miniaturizeButton)?.isHidden = true
     }
+
+    // Size changes only through the keyboard (⌃⌥⇧ + arrows) and Mini/Full.
+    override func zoom(_ sender: Any?) {}
+    override func toggleFullScreen(_ sender: Any?) {}
 
     // Allow a borderless/nonactivating panel to still receive keystrokes.
     override var canBecomeKey: Bool { true }
@@ -67,6 +77,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let host = NSHostingView(rootView: ContentView(vm: vm))
         panel = OverlayPanel(rootView: host)
+        // A non-resizable window's frame autosave restores only its position,
+        // so keep the size chosen with ⌃⌥⇧ + arrows ourselves (Full mode only;
+        // Mini is a temporary size).
+        let sizeKey = "overlaySize"
+        if let saved = UserDefaults.standard.string(forKey: sizeKey) {
+            let size = NSSizeFromString(saved)
+            if size.width >= 300, size.height >= 160 {
+                panel.setFrame(NSRect(origin: panel.frame.origin, size: size), display: false)
+            }
+        }
+        NotificationCenter.default
+            .publisher(for: NSWindow.didResizeNotification, object: panel)
+            .sink { [weak self] _ in
+                guard let self, !self.vm.compactMode else { return }
+                UserDefaults.standard.set(NSStringFromSize(self.panel.frame.size), forKey: sizeKey)
+            }
+            .store(in: &cancellables)
         panel.center()
         panel.ignoresMouseEvents = clickThrough
         panel.makeKeyAndOrderFront(nil)
