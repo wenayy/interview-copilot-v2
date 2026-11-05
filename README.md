@@ -71,8 +71,8 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
   priority automatically.
 - **Keyboard window control** — move (⌃⌥ arrows) and resize (⌃⌥⇧ arrows) the
   overlay without the mouse; the mouse can't resize it, so the cursor never
-  turns into resize arrows. **Click-through** (⌃⌥P) lets the mouse pass
-  straight through it.
+  turns into resize arrows. Hold the keys to keep moving/resizing. **⌃⌥P**
+  locks the size while buttons keep working.
 - **Personalization** — paste or load your résumé (PDF/txt); a toggle controls
   whether answers use it, so it's never forced in.
 - **Hidden from screen share** — the overlay and settings are excluded from
@@ -206,17 +206,16 @@ Great for keeping the overlay small and out of the way during a live interview.
 A short window adapts on its own: below ~460 pt the transcript hides, below
 ~300 pt the controls hide too, so the answer always stays readable.
 
-### Moving, resizing and click-through
+### Moving, resizing and locking the size
 
 The mouse can't resize the overlay (no resize cursor at its edges, no zoom
 button). Use the keyboard instead — it remembers its size and position:
 
 - **⌃⌥ + arrows** moves it (stays on screen).
 - **⌃⌥⇧ + arrows** resizes it: ← → width, ↑ shorter, ↓ taller.
-- **⌃⌥P** toggles **click-through**: the mouse passes straight through the
-  overlay to the app below, so the cursor never changes over it. Buttons and
-  the ask box don't take clicks while it's on — use the hotkeys, or press ⌃⌥P
-  again. Also in the menu bar menu.
+- Tap for one step (40 pt); **hold** to keep moving or resizing.
+- **⌃⌥P** **locks the size**: resizing is frozen, while buttons, typing and
+  moving keep working. Press again to unlock. Also in the menu bar menu.
 
 ### Keyboard shortcuts
 
@@ -235,7 +234,7 @@ button). Use the keyboard instead — it remembers its size and position:
 | **⌃⌥C** | Toggle compact / full mode |
 | **⌃⌥ + arrows** | Move the overlay |
 | **⌃⌥⇧ + arrows** | Resize the overlay |
-| **⌃⌥P** | Toggle click-through (mouse passes through) |
+| **⌃⌥P** | Lock / unlock the overlay size |
 | **⌃⌥[** / **⌃⌥]** | Previous answer / back toward the latest |
 
 These work even when your browser/Meet is focused. The **⌨︎** button in the

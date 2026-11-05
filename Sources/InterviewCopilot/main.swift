@@ -107,7 +107,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.setFrame(panel.constrainFrameRect(panel.frame, to: panel.screen ?? NSScreen.main),
                            display: false)
         }
-        panel.ignoresMouseEvents = clickThrough
         panel.makeKeyAndOrderFront(nil)
 
         // Resize the panel itself for Mini / Full, so Mini is actually small
@@ -131,18 +130,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // MARK: Keyboard move / resize / click-through
+    // MARK: Keyboard move / resize / size lock
 
-    /// Click-through: the mouse passes straight through the overlay to the
-    /// app below, so the cursor never changes over it. Controls stay on
-    /// their hotkeys. Remembered across launches.
-    private var clickThrough = UserDefaults.standard.bool(forKey: "clickThrough") {
+    /// Size lock: freezes the overlay's size (⌃⌥⇧ + arrows do nothing) while
+    /// buttons, typing and moving keep working. Remembered across launches.
+    private var sizeLocked = UserDefaults.standard.bool(forKey: "overlaySizeLocked") {
         didSet {
-            UserDefaults.standard.set(clickThrough, forKey: "clickThrough")
-            panel?.ignoresMouseEvents = clickThrough
-            vm.status = clickThrough
-                ? "Click-through on — mouse passes through (⌃⌥P to turn off)"
-                : "Click-through off"
+            UserDefaults.standard.set(sizeLocked, forKey: "overlaySizeLocked")
+            vm.status = sizeLocked ? "Size locked (⌃⌥P to unlock)" : "Size unlocked"
         }
     }
 
@@ -165,6 +160,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// going below the layout's minimum size.
     private func resizeOverlay(dw: CGFloat, dh: CGFloat) {
         guard let panel else { return }
+        guard !sizeLocked else {
+            vm.status = "Size locked — ⌃⌥P to unlock"
+            return
+        }
         var frame = panel.frame
         let width = max(vm.compactMode ? 300 : 360, frame.width + dw)
         let height = max(160, frame.height + dh)
@@ -282,7 +281,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Shortcuts:  ⌃⌥A answer · ⌃⌥S screen", #selector(noop))
         add("           ⌃⌥H hide · ⌃⌥M mic · ⌃⌥R résumé", #selector(noop))
         menu.addItem(.separator())
-        add("Click-through  (⌃⌥P)", #selector(toggleClickThrough))
+        add("Lock size  (⌃⌥P)", #selector(toggleSizeLock))
         add("Open settings…", #selector(openSettings), ",")
         menu.addItem(.separator())
         add("Relaunch app  (after granting permissions)", #selector(relaunch))
@@ -346,25 +345,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hk.register(keyCode: Shortcuts.newerAnswer.keyCode) { [weak self] in
             self?.vm.showNewerAnswer()
         }
-        hk.register(keyCode: Shortcuts.clickThrough.keyCode) { [weak self] in
-            self?.clickThrough.toggle()
+        hk.register(keyCode: Shortcuts.lockSize.keyCode) { [weak self] in
+            self?.sizeLocked.toggle()
         }
 
         // Arrows (keyCodes ← 123, → 124, ↓ 125, ↑ 126): ⌃⌥ moves the overlay,
-        // ⌃⌥⇧ resizes it (← → width, ↑ shorter, ↓ taller).
+        // ⌃⌥⇧ resizes it (← → width, ↑ shorter, ↓ taller). Holding repeats.
         let step = keyboardStep
         let resize = HotKeyCenter.ctrlOpt | UInt32(shiftKey)
-        hk.register(keyCode: 123) { [weak self] in self?.moveOverlay(dx: -step, dy: 0) }
-        hk.register(keyCode: 124) { [weak self] in self?.moveOverlay(dx: step, dy: 0) }
-        hk.register(keyCode: 125) { [weak self] in self?.moveOverlay(dx: 0, dy: -step) }
-        hk.register(keyCode: 126) { [weak self] in self?.moveOverlay(dx: 0, dy: step) }
-        hk.register(keyCode: 123, modifiers: resize) { [weak self] in self?.resizeOverlay(dw: -step, dh: 0) }
-        hk.register(keyCode: 124, modifiers: resize) { [weak self] in self?.resizeOverlay(dw: step, dh: 0) }
-        hk.register(keyCode: 125, modifiers: resize) { [weak self] in self?.resizeOverlay(dw: 0, dh: step) }
-        hk.register(keyCode: 126, modifiers: resize) { [weak self] in self?.resizeOverlay(dw: 0, dh: -step) }
+        hk.register(keyCode: 123, repeats: true) { [weak self] in self?.moveOverlay(dx: -step, dy: 0) }
+        hk.register(keyCode: 124, repeats: true) { [weak self] in self?.moveOverlay(dx: step, dy: 0) }
+        hk.register(keyCode: 125, repeats: true) { [weak self] in self?.moveOverlay(dx: 0, dy: -step) }
+        hk.register(keyCode: 126, repeats: true) { [weak self] in self?.moveOverlay(dx: 0, dy: step) }
+        hk.register(keyCode: 123, modifiers: resize, repeats: true) { [weak self] in self?.resizeOverlay(dw: -step, dh: 0) }
+        hk.register(keyCode: 124, modifiers: resize, repeats: true) { [weak self] in self?.resizeOverlay(dw: step, dh: 0) }
+        hk.register(keyCode: 125, modifiers: resize, repeats: true) { [weak self] in self?.resizeOverlay(dw: 0, dh: step) }
+        hk.register(keyCode: 126, modifiers: resize, repeats: true) { [weak self] in self?.resizeOverlay(dw: 0, dh: -step) }
     }
 
-    @objc private func toggleClickThrough() { clickThrough.toggle() }
+    @objc private func toggleSizeLock() { sizeLocked.toggle() }
 
     private func toggleOverlay() {
         if panel.isVisible { panel.orderOut(nil) }
@@ -419,7 +418,7 @@ extension AppDelegate: NSMenuDelegate {
             case #selector(stopListening): item.isEnabled = vm.isRunning
             case #selector(showOverlay): item.isEnabled = !panel.isVisible
             case #selector(hideOverlay): item.isEnabled = panel.isVisible
-            case #selector(toggleClickThrough): item.state = clickThrough ? .on : .off
+            case #selector(toggleSizeLock): item.state = sizeLocked ? .on : .off
             default: break
             }
         }
