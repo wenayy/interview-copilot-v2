@@ -102,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             UserDefaults.standard.set(clickThrough, forKey: "clickThrough")
             panel?.ignoresMouseEvents = clickThrough
             vm.status = clickThrough
-                ? "Click-through on — mouse passes through (⌃⌥T to turn off)"
+                ? "Click-through on — mouse passes through (⌃⌥P to turn off)"
                 : "Click-through off"
         }
     }
@@ -243,7 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Shortcuts:  ⌃⌥A answer · ⌃⌥S screen", #selector(noop))
         add("           ⌃⌥H hide · ⌃⌥M mic · ⌃⌥R résumé", #selector(noop))
         menu.addItem(.separator())
-        add("Click-through  (⌃⌥T)", #selector(toggleClickThrough))
+        add("Click-through  (⌃⌥P)", #selector(toggleClickThrough))
         add("Open settings…", #selector(openSettings), ",")
         menu.addItem(.separator())
         add("Relaunch app  (after granting permissions)", #selector(relaunch))

@@ -79,10 +79,11 @@ enum Shortcuts {
     static let scroll = Shortcut(label: "Scrolling screenshot (start / done)", keys: "⌃⌥L", keyCode: 37)
 
     // Display-only rows for the cheat sheet; the four arrows are registered
-    // individually in AppDelegate.setupHotKeys(). T=17.
+    // individually in AppDelegate.setupHotKeys(). P=35 (⌃⌥T is taken
+    // by MyToolbox's Capture Text, which showed its crosshair on every press).
     static let moveOverlay = Shortcut(label: "Move overlay", keys: "⌃⌥ arrows", keyCode: 123)
     static let resizeOverlay = Shortcut(label: "Resize overlay", keys: "⌃⌥⇧ arrows", keyCode: 123)
-    static let clickThrough = Shortcut(label: "Click-through (mouse passes through)", keys: "⌃⌥T", keyCode: 17)
+    static let clickThrough = Shortcut(label: "Click-through (mouse passes through)", keys: "⌃⌥P", keyCode: 35)
 
     static let olderAnswer = Shortcut(label: "Previous answer", keys: "⌃⌥[", keyCode: 33)
     static let newerAnswer = Shortcut(label: "Next answer (back to latest)", keys: "⌃⌥]", keyCode: 30)
