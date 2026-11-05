@@ -41,7 +41,7 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
   Claude effort/adaptive thinking, DeepSeek thinking mode). On = more accurate
   on hard and coding questions; off = fastest.
 - **Switch AI from the overlay** — the **AI** menu picks GPT / Claude /
-  DeepSeek / Gemini for answers, and **Screen** picks who reads Screen/Scroll
+  DeepSeek / Gemini / Grok / Ollama for answers, and **Screen** picks who reads Screen/Scroll
   captures (Auto = the answer AI, or GPT when that's DeepSeek, which can't read
   images). Session memory carries over when you switch.
 - **Previous answers** — a new answer doesn't lose the last two: use **‹ ›**
@@ -56,7 +56,8 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
   on one screen).
 - **Multi-screenshot queue** — press **⌃⌥1** (or **+Shot**) on each screen you
   need (problem, examples, constraints, another tab), then **⌃⌥2** to answer
-  from all of them in one go (up to 6). **⌃⌥3** clears the queue.
+  from all of them in one go — as many as one AI request can carry (the
+  queue bar shows how full it is). **⌃⌥3** clears the queue.
 - **Session memory** — remembers the whole meeting: everything the interviewer
   and you said (even with Auto off), every screen capture (text read
   on-device), typed questions, and every answer. Follow-ups like "optimize it"
@@ -66,7 +67,12 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
 - **Ask a question** — type any question in the ask bar and get an instant AI
   answer, or use **Ask Last** to ask the AI about what you just said out loud.
 - **Compact mode** — toggle Mini/Full to shrink the overlay during the interview,
-  showing only the answer and ask bar.
+  showing only the answer and ask bar. A short window also gives the answer
+  priority automatically.
+- **Keyboard window control** — move (⌃⌥ arrows) and resize (⌃⌥⇧ arrows) the
+  overlay without the mouse; the mouse can't resize it, so the cursor never
+  turns into resize arrows. **Click-through** (⌃⌥P) lets the mouse pass
+  straight through it.
 - **Personalization** — paste or load your résumé (PDF/txt); a toggle controls
   whether answers use it, so it's never forced in.
 - **Hidden from screen share** — the overlay and settings are excluded from
@@ -98,15 +104,15 @@ Then follow **[INSTALL.md](INSTALL.md)** (takes ~2 minutes). New to this? Start 
 
 1. Download **[InterviewCopilot-macOS.zip](../../releases/latest/download/InterviewCopilot-macOS.zip)**
    (or pick it from the [Releases](../../releases) page).
-2. Unzip it and drag **InterviewCopilot.app** into your **Applications** folder.
+2. Unzip it and drag **finder.app** (the app installs as **finder**) into your **Applications** folder.
 3. Because the app isn't from the App Store, macOS quarantines it. Remove the
    quarantine so it will open (one time). Open **Terminal** and run:
    ```bash
-   xattr -dr com.apple.quarantine /Applications/InterviewCopilot.app
+   xattr -dr com.apple.quarantine /Applications/finder.app
    ```
    *(Alternative: try to open it, then go to **System Settings → Privacy &
    Security** and click **Open Anyway**.)*
-4. Launch it from **Spotlight** (⌘Space → "Interview Copilot") or Launchpad.
+4. Launch it from **Spotlight** (⌘Space → "finder") or Launchpad.
    A **waveform icon** appears in your menu bar.
    <img width="366" height="358" alt="image" src="https://github.com/user-attachments/assets/9fc95539-51d8-4cd4-965a-c7fbb500489b" />
 
@@ -119,7 +125,7 @@ Requires **Xcode Command Line Tools** (`xcode-select --install`).
 git clone https://github.com/wenayy/interview-copilot-v2.git
 cd interview-copilot-v2
 ./build_app.sh          # builds + installs to /Applications
-open /Applications/InterviewCopilot.app
+open /Applications/finder.app
 ```
 
 For a stable identity so macOS remembers permissions across rebuilds, create a
@@ -169,7 +175,8 @@ takes effect.
 4. For an on-screen question (coding/MCQ), press **⌃⌥S** (or **Screen**).
 5. For a question longer than the screen, press **⌃⌥L** (or **Scroll**), drag
    over the area, then scroll through it slowly, pausing briefly as you go. A
-   frame is grabbed each time the content settles (up to 10). Press **⌃⌥L**
+   frame is grabbed each time the content settles, up to what one AI request
+   can carry. Press **⌃⌥L**
    again (or **Done**) to send all frames to the AI.
 6. Ask follow-ups normally (typed, spoken, or Ask Last). The copilot remembers
    the whole session as a timeline — both sides of the conversation, the text
@@ -196,6 +203,20 @@ At the bottom of the overlay there's an **ask bar** — two ways to use it:
 Click **Mini** in the header (or press **⌃⌥C**) to hide the transcript and
 shrink the overlay to just the answer + ask bar. Click **Full** to restore.
 Great for keeping the overlay small and out of the way during a live interview.
+A short window adapts on its own: below ~460 pt the transcript hides, below
+~300 pt the controls hide too, so the answer always stays readable.
+
+### Moving, resizing and click-through
+
+The mouse can't resize the overlay (no resize cursor at its edges, no zoom
+button). Use the keyboard instead — it remembers its size and position:
+
+- **⌃⌥ + arrows** moves it (stays on screen).
+- **⌃⌥⇧ + arrows** resizes it: ← → width, ↑ shorter, ↓ taller.
+- **⌃⌥P** toggles **click-through**: the mouse passes straight through the
+  overlay to the app below, so the cursor never changes over it. Buttons and
+  the ask box don't take clicks while it's on — use the hotkeys, or press ⌃⌥P
+  again. Also in the menu bar menu.
 
 ### Keyboard shortcuts
 
@@ -212,6 +233,9 @@ Great for keeping the overlay small and out of the way during a live interview.
 | **⌃⌥R** | Toggle whether answers use your résumé |
 | **⌃⌥Q** | Ask Last — ask AI about what you just said |
 | **⌃⌥C** | Toggle compact / full mode |
+| **⌃⌥ + arrows** | Move the overlay |
+| **⌃⌥⇧ + arrows** | Resize the overlay |
+| **⌃⌥P** | Toggle click-through (mouse passes through) |
 | **⌃⌥[** / **⌃⌥]** | Previous answer / back toward the latest |
 
 These work even when your browser/Meet is focused. The **⌨︎** button in the
@@ -269,8 +293,8 @@ proctored environments.
 
 ## 🧯 Troubleshooting
 
-- **"Interview Copilot is damaged / can't be opened"** → you skipped the
-  quarantine step: `xattr -dr com.apple.quarantine /Applications/InterviewCopilot.app`.
+- **"finder is damaged / can't be opened"** → you skipped the
+  quarantine step: `xattr -dr com.apple.quarantine /Applications/finder.app`.
 - **Start just reopens the permission screen** → grant **Screen Recording**, then
   menu bar → **Relaunch app** (macOS needs a restart for it to apply).
 - **Status stuck on "waiting for audio…"** → the call audio isn't being captured;

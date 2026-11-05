@@ -10,7 +10,7 @@ from the latest release and unzip it.
 
 ## 2. Move it to Applications
 
-Drag **InterviewCopilot.app** into your **Applications** folder.
+Drag **finder.app** (the app installs under the name **finder**) into your **Applications** folder.
 
 ## 3. Allow it to open (one time)
 
@@ -18,7 +18,7 @@ The app isn't from the App Store, so macOS quarantines it. Open **Terminal**
 and run:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/InterviewCopilot.app
+xattr -dr com.apple.quarantine /Applications/finder.app
 ```
 
 *(Or: try to open it, then go to **System Settings → Privacy & Security** and
@@ -26,17 +26,17 @@ click **Open Anyway**.)*
 
 ## 4. Open it
 
-Launch it from Spotlight (⌘Space → "Interview Copilot"). There's **no window
+Launch it from Spotlight (⌘Space → "finder"). There's **no window
 and no Dock icon** — look for the **waveform icon in the menu bar** (top-right).
 
 ## 5. Add your API keys
 
 Menu bar icon → **Open settings…**
 
-- Pick an AI provider (**OpenAI**, **Anthropic**, **DeepSeek**, or **Gemini**)
-  and paste your key. You can switch later from the overlay's **AI** menu.
-- For Screen/Scroll captures you need an OpenAI, Anthropic, or Gemini key
-  (DeepSeek can't read images).
+- Pick an AI provider (**OpenAI**, **Anthropic**, **DeepSeek**, **Gemini**,
+  **Grok**, or local **Ollama** — no key needed) and paste your key. You can switch later from the overlay's **AI** menu.
+- For Screen/Scroll captures you need a vision model: OpenAI, Anthropic,
+  Gemini, Grok, or an Ollama vision model (DeepSeek can't read images).
 - *(Recommended)* Under **Transcription**, choose **Deepgram** and paste a
   Deepgram key for accurate speech-to-text.
 
