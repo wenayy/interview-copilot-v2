@@ -21,13 +21,17 @@ APP="finder.app"
 if [ "${UNIVERSAL:-0}" = "1" ]; then
     # Apple Silicon + Intel in one binary (for release downloads). Each arch is
     # built separately and merged with lipo, which works without full Xcode.
+    # Newer SwiftPM writes every arch to the same bin path, so copy each
+    # binary out right after its build, before the next one overwrites it.
     echo "▶ Building universal ($CONFIG: arm64 + x86_64)…"
-    swift build -c "$CONFIG" --arch arm64
-    swift build -c "$CONFIG" --arch x86_64
-    BIN="$(mktemp -d)/InterviewCopilot"
-    lipo -create -output "$BIN" \
-        "$(swift build -c "$CONFIG" --arch arm64 --show-bin-path)/InterviewCopilot" \
-        "$(swift build -c "$CONFIG" --arch x86_64 --show-bin-path)/InterviewCopilot"
+    TMP="$(mktemp -d)"
+    for ARCH in arm64 x86_64; do
+        swift build -c "$CONFIG" --arch "$ARCH"
+        cp "$(swift build -c "$CONFIG" --arch "$ARCH" --show-bin-path)/InterviewCopilot" "$TMP/$ARCH"
+        [ "$(lipo -archs "$TMP/$ARCH")" = "$ARCH" ] || { echo "✗ $ARCH build produced $(lipo -archs "$TMP/$ARCH")"; exit 1; }
+    done
+    BIN="$TMP/InterviewCopilot"
+    lipo -create -output "$BIN" "$TMP/arm64" "$TMP/x86_64"
 else
     echo "▶ Building ($CONFIG)…"
     swift build -c "$CONFIG"
