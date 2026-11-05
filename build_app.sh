@@ -5,6 +5,17 @@
 set -euo pipefail
 
 CONFIG="${1:-release}"
+
+# The macOS 27 SDK makes SwiftUI's @State a macro whose plugin ships only with
+# full Xcode. Command Line Tools alone lack it, so fall back to the macOS 26
+# SDK there (the app targets macOS 14+, so nothing is lost).
+CLT=/Library/Developer/CommandLineTools
+if [ -z "${SDKROOT:-}" ] && [ "$(xcode-select -p)" = "$CLT" ] \
+   && [ -z "$(find "$CLT/usr/lib/swift/host/plugins" -name '*SwiftUIMacros*' 2>/dev/null)" ] \
+   && [ -d "$CLT/SDKs/MacOSX26.sdk" ]; then
+    export SDKROOT="$CLT/SDKs/MacOSX26.sdk"
+    echo "▶ Using $(basename "$(readlink "$SDKROOT" || echo "$SDKROOT")") (CLT has no SwiftUI macro plugin)"
+fi
 APP="finder.app"
 
 if [ "${UNIVERSAL:-0}" = "1" ]; then
