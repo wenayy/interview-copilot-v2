@@ -50,7 +50,39 @@ final class OverlayPanel: NSPanel {
         // minimize button; zoom/full screen are blocked below. Close stays.
         standardWindowButton(.zoomButton)?.isHidden = true
         standardWindowButton(.miniaturizeButton)?.isHidden = true
+        disableCursorRects()
     }
+
+    // The cursor never changes over the overlay (a pointing hand over buttons
+    // or a text I-beam would show on a screen share): cursor updates are
+    // answered with the plain arrow. Buttons and typing still work.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .cursorUpdate {
+            NSCursor.arrow.set()
+            return
+        }
+        super.sendEvent(event)
+        // Some controls (menu-style pickers) set a pointing hand while
+        // handling mouse movement rather than via cursor updates.
+        switch event.type {
+        case .mouseMoved, .mouseEntered, .mouseExited,
+             .leftMouseDown, .leftMouseUp, .leftMouseDragged:
+            NSCursor.arrow.set()
+        default:
+            break
+        }
+    }
+
+    override func becomeKey() {
+        super.becomeKey()
+        disableCursorRects()   // cursor rects (e.g. text fields) would set an I-beam
+    }
+
+    // SwiftUI turns cursor rects back on (I-beam over selectable text, hand
+    // over buttons); keep them off for good.
+    override func enableCursorRects() {}
+    override func resetCursorRects() {}
+    override func invalidateCursorRects(for view: NSView) {}
 
     // Size changes only through the keyboard (⌃⌥⇧ + arrows) and Mini/Full.
     override func zoom(_ sender: Any?) {}
